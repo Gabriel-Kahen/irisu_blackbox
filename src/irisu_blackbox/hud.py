@@ -29,6 +29,8 @@ class HUDReader:
         self.score_cfg = score_cfg
         self.health_cfg = health_cfg
         self._committed_score: int | None = None
+        self._score_smoothing_window = max(1, int(self.score_cfg.score_smoothing_window))
+        self._score_history: deque[int] = deque(maxlen=self._score_smoothing_window)
         self._pending_large_score: int | None = None
         self._pending_large_score_streak = 0
         self._health_smoothing_window = max(1, int(self.health_cfg.smoothing_window))
@@ -36,6 +38,7 @@ class HUDReader:
 
     def reset(self) -> None:
         self._committed_score = None
+        self._score_history.clear()
         self._pending_large_score = None
         self._pending_large_score_streak = 0
         self._health_history.clear()
@@ -274,6 +277,8 @@ class HUDReader:
 
         if self._committed_score is None:
             self._committed_score = candidate
+            self._score_history.clear()
+            self._score_history.append(candidate)
             self._pending_large_score = None
             self._pending_large_score_streak = 0
             return self._committed_score
@@ -289,10 +294,7 @@ class HUDReader:
             self._pending_large_score = None
             self._pending_large_score_streak = 0
 
-        if self.score_cfg.monotonic_non_decreasing:
-            self._committed_score = max(self._committed_score, candidate)
-        else:
-            self._committed_score = candidate
+        self._committed_score = self._smooth_score_candidate(candidate)
         return self._committed_score
 
     def _confirm_large_jump(self, candidate: int, max_step: int) -> int | None:
@@ -317,6 +319,16 @@ class HUDReader:
         self._pending_large_score = None
         self._pending_large_score_streak = 0
         return confirmed
+
+    def _smooth_score_candidate(self, candidate: int) -> int:
+        self._score_history.append(int(candidate))
+        if self._score_smoothing_window <= 1:
+            return int(candidate)
+        if len(self._score_history) < self._score_smoothing_window:
+            return int(candidate)
+
+        values = np.asarray(self._score_history, dtype=np.int32)
+        return int(np.median(values))
 
     def _smooth_health_percent(
         self,

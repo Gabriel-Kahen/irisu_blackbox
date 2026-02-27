@@ -143,11 +143,12 @@ def test_health_smoothing_window_reduces_single_frame_spike():
     assert 0.7 <= h3 <= 0.9
 
 
-def test_score_is_monotonic_and_spike_limited():
+def test_score_can_decrease_and_spike_limited():
     reader = HUDReader(
         ScoreOCRConfig(
             enabled=False,
-            monotonic_non_decreasing=True,
+            monotonic_non_decreasing=False,
+            score_smoothing_window=1,
             hold_last_value_when_missing=True,
             max_step_increase=500,
         ),
@@ -160,13 +161,13 @@ def test_score_is_monotonic_and_spike_limited():
     s4 = reader._stabilize_score(103)
 
     assert s1 == 100
-    assert s2 >= s1
+    assert s2 == 102
     assert s3 == s2
-    assert s4 >= s3
+    assert s4 == 103
 
-    # Lower read should not decrease the committed score.
+    # Lower read is now allowed.
     s5 = reader._stabilize_score(50)
-    assert s5 == s4
+    assert s5 == 50
 
     # Missing OCR keeps last value.
     s6 = reader._stabilize_score(None)
@@ -175,7 +176,7 @@ def test_score_is_monotonic_and_spike_limited():
 
 def test_score_reset_clears_monotonic_state():
     reader = HUDReader(
-        ScoreOCRConfig(enabled=False, monotonic_non_decreasing=True),
+        ScoreOCRConfig(enabled=False, monotonic_non_decreasing=False, score_smoothing_window=1),
         HealthBarConfig(enabled=False),
     )
 
@@ -192,7 +193,8 @@ def test_score_low_confidence_is_ignored():
         ScoreOCRConfig(
             enabled=True,
             min_confidence=60.0,
-            monotonic_non_decreasing=True,
+            monotonic_non_decreasing=False,
+            score_smoothing_window=1,
             hold_last_value_when_missing=True,
         ),
         HealthBarConfig(enabled=False),
@@ -208,7 +210,8 @@ def test_score_large_jump_confirms_on_second_frame():
     reader = HUDReader(
         ScoreOCRConfig(
             enabled=False,
-            monotonic_non_decreasing=True,
+            monotonic_non_decreasing=False,
+            score_smoothing_window=1,
             hold_last_value_when_missing=True,
             max_step_increase=500,
         ),
@@ -228,7 +231,8 @@ def test_score_one_frame_large_spike_is_rejected():
     reader = HUDReader(
         ScoreOCRConfig(
             enabled=False,
-            monotonic_non_decreasing=True,
+            monotonic_non_decreasing=False,
+            score_smoothing_window=1,
             hold_last_value_when_missing=True,
             max_step_increase=500,
         ),
@@ -242,3 +246,25 @@ def test_score_one_frame_large_spike_is_rejected():
     assert s1 == 1000
     assert s2 == 1000
     assert s3 == 1010
+
+
+def test_score_light_median_smoothing_reduces_one_frame_jitter():
+    reader = HUDReader(
+        ScoreOCRConfig(
+            enabled=False,
+            monotonic_non_decreasing=False,
+            score_smoothing_window=3,
+            hold_last_value_when_missing=True,
+            max_step_increase=0,
+        ),
+        HealthBarConfig(enabled=False),
+    )
+
+    s1 = reader._stabilize_score(100)
+    s2 = reader._stabilize_score(180)
+    s3 = reader._stabilize_score(102)
+
+    assert s1 == 100
+    assert s2 == 180
+    # Median of [100, 180, 102] -> 102, so one-frame spike is damped quickly.
+    assert s3 == 102

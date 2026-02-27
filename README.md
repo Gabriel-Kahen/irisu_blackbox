@@ -87,7 +87,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - set `env.health_bar.fill_direction = "left_to_right"` (or `"right_to_left"`) for edge-based fill %
 - for constant UI, use `method = "scanline"` with fixed `scanline_start_x/end_x/y`
 - increase `env.health_bar.smoothing_window` (e.g. 5-9) to reduce one-frame health spikes
-- set `env.score_ocr.monotonic_non_decreasing = true` to prevent score drop jitter
+- set `env.score_ocr.score_smoothing_window = 3` for light anti-jitter smoothing
 - raise `env.score_ocr.min_confidence` to ignore weak OCR reads
 - set `env.score_ocr.max_step_increase` to reject one-frame score spikes
 - set `env.score_ocr.method = "template"` to use digit-template matching

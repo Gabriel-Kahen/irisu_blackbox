@@ -86,7 +86,8 @@ class ScoreOCRConfig:
     template_expected_digits: int = 8
     template_inner_left: int = 0
     template_inner_right: int = 0
-    monotonic_non_decreasing: bool = True
+    monotonic_non_decreasing: bool = False
+    score_smoothing_window: int = 3
     hold_last_value_when_missing: bool = True
     min_confidence: float = 40.0
     max_step_increase: int = 2500
@@ -120,6 +121,9 @@ class ScoreOCRConfig:
             template_inner_right=int(data.get("template_inner_right", defaults.template_inner_right)),
             monotonic_non_decreasing=bool(
                 data.get("monotonic_non_decreasing", defaults.monotonic_non_decreasing)
+            ),
+            score_smoothing_window=int(
+                data.get("score_smoothing_window", defaults.score_smoothing_window)
             ),
             hold_last_value_when_missing=bool(
                 data.get("hold_last_value_when_missing", defaults.hold_last_value_when_missing)
