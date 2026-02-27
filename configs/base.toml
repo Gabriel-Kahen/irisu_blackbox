@@ -71,7 +71,7 @@ height = 60
 [env.health_bar]
 enabled = true
 column_fill_threshold = 0.04
-adaptive_fill_peak_ratio = 0.45
+adaptive_fill_peak_ratio = 0.35
 min_visible_pixels = 40
 fill_direction = "left_to_right"
 invert_percent = false

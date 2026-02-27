@@ -71,15 +71,24 @@ class HUDReader:
         if not visible:
             return 0.0, False
 
-        # Estimate fill from bright-red energy per column so dark baseline red is ignored.
+        # Estimate fill per column from a baseline-aware red strength profile.
+        saturation = hsv[:, :, 1].astype(np.float32) / 255.0
         value = hsv[:, :, 2].astype(np.float32) / 255.0
-        red_value = value * (mask.astype(np.float32) / 255.0)
-        col_strength = red_value.mean(axis=0)
-        peak_strength = float(col_strength.max())
-        adaptive_threshold = max(
-            self.health_cfg.column_fill_threshold,
-            peak_strength * self.health_cfg.adaptive_fill_peak_ratio,
+        red_strength = (0.7 * saturation) + (0.3 * value)
+        red_strength = red_strength * (mask.astype(np.float32) / 255.0)
+        col_strength = red_strength.mean(axis=0)
+        if col_strength.size > 4:
+            col_strength = cv2.GaussianBlur(col_strength[None, :], (1, 0), 1.2)[0]
+
+        baseline = float(np.percentile(col_strength, 20))
+        peak_strength = float(np.percentile(col_strength, 95))
+        if peak_strength <= baseline:
+            return 0.0, True
+
+        adaptive_threshold = baseline + (
+            (peak_strength - baseline) * self.health_cfg.adaptive_fill_peak_ratio
         )
+        adaptive_threshold = max(self.health_cfg.column_fill_threshold, adaptive_threshold)
         col_mask = (col_strength >= adaptive_threshold).astype(np.uint8)
         if col_mask.size == 0:
             percent = 0.0
@@ -102,8 +111,11 @@ class HUDReader:
                 percent = 1.0 - percent
             return percent, True
 
-        # Use the longest bright-red span as the active fill.
-        start, end = max(spans, key=lambda item: item[1] - item[0] + 1)
+        # Use edge-consistent span based on configured fill direction.
+        if self.health_cfg.fill_direction.lower() == "right_to_left":
+            start, end = max(spans, key=lambda item: item[1])
+        else:
+            start, end = min(spans, key=lambda item: item[0])
         width = mask.shape[1]
         direction = self.health_cfg.fill_direction.lower()
         if direction == "right_to_left":
