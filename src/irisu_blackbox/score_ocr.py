@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 
 import cv2
@@ -14,6 +15,13 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 _DIGITS_RE = re.compile(r"\d+")
+
+
+@dataclass(slots=True)
+class ScoreOCRReading:
+    score: int
+    confidence: float
+    digit_len: int
 
 
 def _ocr_digits_candidate(
@@ -56,6 +64,28 @@ def _ocr_digits_candidate(
     return int(best_digits), best_len, best_conf
 
 
+def _is_better_candidate(
+    digit_len: int,
+    confidence: float,
+    best_len: int,
+    best_conf: float,
+) -> bool:
+    if best_len == 0:
+        return True
+
+    conf_known = confidence >= 0
+    best_conf_known = best_conf >= 0
+    if conf_known and best_conf_known:
+        if abs(confidence - best_conf) > 1e-6:
+            return confidence > best_conf
+        return digit_len > best_len
+    if conf_known and not best_conf_known:
+        return True
+    if not conf_known and best_conf_known:
+        return False
+    return digit_len > best_len
+
+
 def _build_score_variants(crop_bgr: np.ndarray) -> list[np.ndarray]:
     # Upscale first to improve OCR on thin stylized glyphs.
     scale = 3
@@ -88,7 +118,11 @@ def _build_score_variants(crop_bgr: np.ndarray) -> list[np.ndarray]:
     ]
 
 
-def extract_score(frame_bgr: np.ndarray, region: Rect, tesseract_cmd: str | None = None) -> int | None:
+def extract_score_reading(
+    frame_bgr: np.ndarray,
+    region: Rect,
+    tesseract_cmd: str | None = None,
+) -> ScoreOCRReading | None:
     if pytesseract is None:
         return None
 
@@ -99,28 +133,41 @@ def extract_score(frame_bgr: np.ndarray, region: Rect, tesseract_cmd: str | None
     if crop.size == 0:
         return None
 
-    tesseract_config = (
-        "--oem 1 --psm 7 "
-        "-c classify_bln_numeric_mode=1 "
-        "-c tessedit_char_whitelist=0123456789"
-    )
-
     best_score: int | None = None
     best_len = 0
     best_conf = -1.0
 
+    base_cfg = "-c classify_bln_numeric_mode=1 -c tessedit_char_whitelist=0123456789"
+    tesseract_configs = [
+        f"--oem 1 --psm 7 {base_cfg}",
+        f"--oem 1 --psm 8 {base_cfg}",
+        f"--oem 1 --psm 13 {base_cfg}",
+    ]
+
     for variant in _build_score_variants(crop):
-        score, digit_len, confidence = _ocr_digits_candidate(
-            variant,
-            tesseract_config=tesseract_config,
-        )
-        if score is None:
-            continue
-        if digit_len > best_len or (digit_len == best_len and confidence > best_conf):
-            best_score = score
-            best_len = digit_len
-            best_conf = confidence
+        for tesseract_config in tesseract_configs:
+            score, digit_len, confidence = _ocr_digits_candidate(
+                variant,
+                tesseract_config=tesseract_config,
+            )
+            if score is None:
+                continue
+            if _is_better_candidate(digit_len, confidence, best_len, best_conf):
+                best_score = score
+                best_len = digit_len
+                best_conf = confidence
 
     if best_score is None:
         return None
-    return best_score
+    return ScoreOCRReading(score=best_score, confidence=best_conf, digit_len=best_len)
+
+
+def extract_score(frame_bgr: np.ndarray, region: Rect, tesseract_cmd: str | None = None) -> int | None:
+    reading = extract_score_reading(
+        frame_bgr=frame_bgr,
+        region=region,
+        tesseract_cmd=tesseract_cmd,
+    )
+    if reading is None:
+        return None
+    return reading.score

@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 from irisu_blackbox.config import HealthBarConfig, Rect, ScoreOCRConfig
-from irisu_blackbox.score_ocr import extract_score
+from irisu_blackbox.score_ocr import extract_score_reading
 
 
 @dataclass(slots=True)
@@ -28,14 +28,11 @@ class HUDReader:
     def __init__(self, score_cfg: ScoreOCRConfig, health_cfg: HealthBarConfig) -> None:
         self.score_cfg = score_cfg
         self.health_cfg = health_cfg
-        self._score_smoothing_window = max(1, int(self.score_cfg.smoothing_window))
-        self._score_history: deque[int] = deque(maxlen=self._score_smoothing_window)
         self._committed_score: int | None = None
         self._health_smoothing_window = max(1, int(self.health_cfg.smoothing_window))
         self._health_history: deque[float] = deque(maxlen=self._health_smoothing_window)
 
     def reset(self) -> None:
-        self._score_history.clear()
         self._committed_score = None
         self._health_history.clear()
 
@@ -53,11 +50,16 @@ class HUDReader:
     def _read_score(self, frame_bgr: np.ndarray) -> int | None:
         if not self.score_cfg.enabled or self.score_cfg.region is None:
             return None
-        return extract_score(
+        reading = extract_score_reading(
             frame_bgr=frame_bgr,
             region=self.score_cfg.region,
             tesseract_cmd=self.score_cfg.tesseract_cmd,
         )
+        if reading is None:
+            return None
+        if reading.confidence >= 0 and reading.confidence < self.score_cfg.min_confidence:
+            return None
+        return reading.score
 
     def _read_health(self, frame_bgr: np.ndarray) -> tuple[float | None, bool | None]:
         if not self.health_cfg.enabled:
@@ -252,14 +254,15 @@ class HUDReader:
                 return self._committed_score
             return None
 
-        self._score_history.append(int(raw_score))
-        if self._score_smoothing_window <= 1:
-            candidate = int(raw_score)
-        else:
-            candidate = int(np.median(np.asarray(self._score_history, dtype=np.float32)))
+        candidate = int(raw_score)
 
         if self._committed_score is None:
             self._committed_score = candidate
+            return self._committed_score
+
+        max_step = int(self.score_cfg.max_step_increase)
+        if max_step > 0 and candidate > (self._committed_score + max_step):
+            # Likely OCR spike; ignore this step and keep current score.
             return self._committed_score
 
         if self.score_cfg.monotonic_non_decreasing:

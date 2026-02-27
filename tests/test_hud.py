@@ -143,18 +143,17 @@ def test_health_smoothing_window_reduces_single_frame_spike():
     assert 0.7 <= h3 <= 0.9
 
 
-def test_score_is_monotonic_and_smoothed():
+def test_score_is_monotonic_and_spike_limited():
     reader = HUDReader(
         ScoreOCRConfig(
             enabled=False,
-            smoothing_window=3,
             monotonic_non_decreasing=True,
             hold_last_value_when_missing=True,
+            max_step_increase=500,
         ),
         HealthBarConfig(enabled=False),
     )
 
-    # Single-frame high spike should be filtered by median smoothing.
     s1 = reader._stabilize_score(100)
     s2 = reader._stabilize_score(102)
     s3 = reader._stabilize_score(9999)
@@ -162,7 +161,7 @@ def test_score_is_monotonic_and_smoothed():
 
     assert s1 == 100
     assert s2 >= s1
-    assert s3 < 1000
+    assert s3 == s2
     assert s4 >= s3
 
     # Lower read should not decrease the committed score.
@@ -176,7 +175,7 @@ def test_score_is_monotonic_and_smoothed():
 
 def test_score_reset_clears_monotonic_state():
     reader = HUDReader(
-        ScoreOCRConfig(enabled=False, smoothing_window=3, monotonic_non_decreasing=True),
+        ScoreOCRConfig(enabled=False, monotonic_non_decreasing=True),
         HealthBarConfig(enabled=False),
     )
 
@@ -186,3 +185,20 @@ def test_score_reset_clears_monotonic_state():
     reader.reset()
     after = reader._stabilize_score(0)
     assert after == 0
+
+
+def test_score_low_confidence_is_ignored():
+    reader = HUDReader(
+        ScoreOCRConfig(
+            enabled=True,
+            min_confidence=60.0,
+            monotonic_non_decreasing=True,
+            hold_last_value_when_missing=True,
+        ),
+        HealthBarConfig(enabled=False),
+    )
+    reader._committed_score = 123
+
+    # Simulate candidate from OCR after confidence gate failed (i.e., read None).
+    stable = reader._stabilize_score(None)
+    assert stable == 123

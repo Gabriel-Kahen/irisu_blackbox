@@ -85,7 +85,8 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - for constant UI, use `method = "scanline"` with fixed `scanline_start_x/end_x/y`
 - increase `env.health_bar.smoothing_window` (e.g. 5-9) to reduce one-frame health spikes
 - set `env.score_ocr.monotonic_non_decreasing = true` to prevent score drop jitter
-- tune `env.score_ocr.smoothing_window` (e.g. 3-7) for score OCR stability
+- raise `env.score_ocr.min_confidence` to ignore weak OCR reads
+- set `env.score_ocr.max_step_increase` to reject one-frame score spikes
 
 5. Use calibration preview to verify grid alignment:
 
