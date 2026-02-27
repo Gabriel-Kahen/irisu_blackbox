@@ -21,7 +21,10 @@ dependencies = [
   "pygetwindow>=0.0.9",
   "sb3-contrib>=2.3.0",
   "stable-baselines3>=2.3.0",
+  "tensorboard>=2.16.0",
   "torch>=2.2.0",
+  "tqdm>=4.66.0",
+  "rich>=13.7.0",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +40,7 @@ ocr = [
 irisu-train = "irisu_blackbox.train:main"
 irisu-play = "irisu_blackbox.play:main"
 irisu-calibrate = "irisu_blackbox.calibrate:main"
+irisu-monitor = "irisu_blackbox.monitor:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/irisu_blackbox"]

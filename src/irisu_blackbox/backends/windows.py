@@ -106,10 +106,15 @@ class WindowsGameBackend(GameBackend):
             if kind == "click":
                 if step.x is None or step.y is None:
                     raise ValueError("Reset macro click step requires x/y")
-                pyautogui.mouseDown(x=step.x, y=step.y, button=step.button)
+                x = step.x
+                y = step.y
+                if step.relative_to_capture:
+                    x = self._capture_region.left + x
+                    y = self._capture_region.top + y
+                pyautogui.mouseDown(x=x, y=y, button=step.button)
                 if step.duration_s > 0:
                     time.sleep(step.duration_s)
-                pyautogui.mouseUp(x=step.x, y=step.y, button=step.button)
+                pyautogui.mouseUp(x=x, y=y, button=step.button)
                 continue
 
             if kind == "key":
@@ -139,6 +144,7 @@ class WindowsGameBackend(GameBackend):
         pyautogui.mouseUp(x=x, y=y, button=button)
 
     def reset(self) -> None:
+        self._refresh_window_and_region()
         if self.binding.focus_before_step:
             self._focus_window()
         self._run_macro()

@@ -39,10 +39,15 @@ class RewardShaper:
         self._stale_steps = 0
         self._prev_score: int | None = None
 
-    def reset(self, processed_frame: np.ndarray, raw_frame_bgr: np.ndarray) -> None:
+    def reset(
+        self,
+        processed_frame: np.ndarray,
+        raw_frame_bgr: np.ndarray,
+        observed_score: int | None = None,
+    ) -> None:
         self._prev_processed = processed_frame.copy()
         self._stale_steps = 0
-        self._prev_score = self._read_score(raw_frame_bgr)
+        self._prev_score = observed_score if observed_score is not None else self._read_score(raw_frame_bgr)
 
     def _read_score(self, raw_frame_bgr: np.ndarray) -> int | None:
         if not self.score_cfg.enabled or self.score_cfg.region is None:
@@ -53,9 +58,14 @@ class RewardShaper:
             tesseract_cmd=self.score_cfg.tesseract_cmd,
         )
 
-    def step(self, processed_frame: np.ndarray, raw_frame_bgr: np.ndarray) -> tuple[float, dict[str, float]]:
+    def step(
+        self,
+        processed_frame: np.ndarray,
+        raw_frame_bgr: np.ndarray,
+        observed_score: int | None = None,
+    ) -> tuple[float, dict[str, float]]:
         if self._prev_processed is None:
-            self.reset(processed_frame, raw_frame_bgr)
+            self.reset(processed_frame, raw_frame_bgr, observed_score=observed_score)
 
         terms = RewardTerms(survival=self.cfg.survival_reward)
 
@@ -75,7 +85,7 @@ class RewardShaper:
         if self._stale_steps >= self.cfg.stale_patience:
             terms.stale = self.cfg.stale_penalty
 
-        current_score = self._read_score(raw_frame_bgr)
+        current_score = observed_score if observed_score is not None else self._read_score(raw_frame_bgr)
         if current_score is not None and self._prev_score is not None:
             delta = max(0, current_score - self._prev_score)
             terms.score_delta = delta * self.cfg.score_delta_scale

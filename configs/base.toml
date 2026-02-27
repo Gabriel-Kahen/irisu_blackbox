@@ -8,6 +8,8 @@ backend = "mock"
 obs_width = 96
 obs_height = 96
 frame_stack = 4
+game_over_on_health_missing = false
+health_missing_patience = 3
 game_over_template = ""
 game_over_threshold = 0.92
 
@@ -45,6 +47,7 @@ score_delta_scale = 0.001
 max_steps = 5000
 action_repeat = 1
 click_hold_s = 0.01
+max_clicks_per_second = 3.0
 inter_step_sleep_s = 0.0
 
 # Macro executed on env.reset() for live game flow.
@@ -54,6 +57,14 @@ inter_step_sleep_s = 0.0
 # duration_s = 0.2
 #
 # [[env.reset_macro]]
+# kind = "click"
+# x = 420
+# y = 260
+# button = "left"
+# relative_to_capture = true
+# duration_s = 0.04
+#
+# [[env.reset_macro]]
 # kind = "sleep"
 # duration_s = 0.8
 
@@ -61,12 +72,28 @@ inter_step_sleep_s = 0.0
 enabled = false
 tesseract_cmd = ""
 
-# Optional score OCR region (screen coordinates).
+# Optional score OCR region (frame coordinates, relative to captured frame).
 # [env.score_ocr.region]
 # left = 30
 # top = 30
 # width = 170
 # height = 40
+
+[env.health_bar]
+enabled = false
+column_fill_threshold = 0.08
+min_visible_pixels = 200
+hsv_lower_1 = [0, 70, 40]
+hsv_upper_1 = [12, 255, 255]
+hsv_lower_2 = [170, 70, 40]
+hsv_upper_2 = [179, 255, 255]
+
+# Health bar region in frame coordinates (relative to captured frame).
+# [env.health_bar.region]
+# left = 190
+# top = 450
+# width = 430
+# height = 30
 
 [train]
 n_envs = 1

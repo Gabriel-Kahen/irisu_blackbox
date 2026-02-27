@@ -5,7 +5,7 @@ from pathlib import Path
 
 import cv2
 
-from irisu_blackbox.config import load_config
+from irisu_blackbox.config import Rect, load_config
 from irisu_blackbox.factory import make_env_factory
 
 
@@ -31,6 +31,34 @@ def _draw_grid(frame_bgr, left: int, top: int, right: int, bottom: int, rows: in
     return out
 
 
+def _draw_region(frame_bgr, region: Rect, label: str, color: tuple[int, int, int]):
+    out = frame_bgr.copy()
+    cv2.rectangle(
+        out,
+        (region.left, region.top),
+        (region.right, region.bottom),
+        color,
+        2,
+    )
+    cv2.putText(
+        out,
+        label,
+        (region.left, max(12, region.top - 6)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        color,
+        1,
+        cv2.LINE_AA,
+    )
+    return out
+
+
+def _to_frame_coords(x: int, y: int, capture_region: Rect | None) -> tuple[int, int]:
+    if capture_region is None:
+        return x, y
+    return x - capture_region.left, y - capture_region.top
+
+
 def main() -> None:
     args = _build_arg_parser().parse_args()
     cfg = load_config(args.config)
@@ -47,15 +75,21 @@ def main() -> None:
 
         frame_bgr = frame_rgb[:, :, ::-1]
         g = cfg.env.action_grid
+        grid_left, grid_top = _to_frame_coords(g.left, g.top, cfg.env.window.capture_region)
+        grid_right, grid_bottom = _to_frame_coords(g.right, g.bottom, cfg.env.window.capture_region)
         preview = _draw_grid(
             frame_bgr,
-            left=g.left,
-            top=g.top,
-            right=g.right,
-            bottom=g.bottom,
+            left=grid_left,
+            top=grid_top,
+            right=grid_right,
+            bottom=grid_bottom,
             rows=g.rows,
             cols=g.cols,
         )
+        if cfg.env.score_ocr.enabled and cfg.env.score_ocr.region is not None:
+            preview = _draw_region(preview, cfg.env.score_ocr.region, "score_ocr", (0, 255, 80))
+        if cfg.env.health_bar.enabled and cfg.env.health_bar.region is not None:
+            preview = _draw_region(preview, cfg.env.health_bar.region, "health_bar", (0, 80, 255))
 
         out_path = args.out.expanduser().resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)

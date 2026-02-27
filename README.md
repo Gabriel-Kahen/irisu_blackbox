@@ -19,7 +19,12 @@ It is built around a Gymnasium environment plus `RecurrentPPO` (`CnnLstmPolicy`)
   - cascade bonus proxy (large frame deltas)
   - stale-state penalty
   - optional OCR score-delta reward
+- HUD extraction hooks:
+  - score OCR reader
+  - health bar percentage reader
+  - game-over trigger from health bar disappearance
 - `irisu-train` / `irisu-play` / `irisu-calibrate` CLIs
+- `irisu-monitor`: live HUD readout (`score`, `health %`, `health visible`)
 
 ## Project Layout
 
@@ -68,17 +73,56 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 2. Set click-grid bounds (`env.action_grid.left/top/right/bottom`) in screen coordinates.
 
 3. Define `env.reset_macro` so `env.reset()` reliably starts a new run.
+4. Configure HUD regions to track score and health:
 
-4. Use calibration preview to verify grid alignment:
+- `env.score_ocr`: score region + optional tesseract path
+- `env.health_bar`: health bar region and color thresholds
+- `env.game_over_on_health_missing = true` to terminate when bar disappears
+- set `env.episode.max_clicks_per_second = 3.0` to cap click rate
+
+5. Use calibration preview to verify grid alignment:
 
 ```bash
 irisu-calibrate --config configs/base.toml --out artifacts/grid_overlay.png
 ```
 
-5. Train:
+6. Train:
 
 ```bash
 irisu-train --config configs/base.toml --run-dir runs/live_01
+```
+
+### Live HUD Monitor
+
+Use this while tuning score/health regions:
+
+```bash
+irisu-monitor --config configs/base.toml
+```
+
+Auto-run reset macro when health disappears for configured patience:
+
+```bash
+irisu-monitor --config configs/base.toml --auto-reset
+```
+
+### Irisu Menu Restart Macro (Start Click)
+
+Use a click step in `env.reset_macro` that targets the `Start` button.
+If `relative_to_capture = true`, `x`/`y` are interpreted relative to the capture frame's top-left corner.
+
+```toml
+[[env.reset_macro]]
+kind = "click"
+x = 420
+y = 265
+button = "left"
+relative_to_capture = true
+duration_s = 0.04
+
+[[env.reset_macro]]
+kind = "sleep"
+duration_s = 0.8
 ```
 
 ## Multi-Instance Training
@@ -108,6 +152,8 @@ Reward is composed as:
 `survival + activity + cascade_bonus + stale_penalty + score_delta`
 
 For strict black-box setups with no OCR, leave score reward disabled and rely on time/activity proxies until your capture/reset loop is stable.
+
+When score OCR is enabled, `score_delta` uses the per-step score increase from HUD readings.
 
 ## Safety Notes
 

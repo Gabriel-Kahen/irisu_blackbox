@@ -92,6 +92,48 @@ class ScoreOCRConfig:
         )
 
 
+def _parse_hsv_triplet(
+    value: list[int] | tuple[int, int, int] | None,
+    default: tuple[int, int, int],
+) -> tuple[int, int, int]:
+    if value is None:
+        return default
+    if len(value) != 3:
+        raise ValueError(f"Expected HSV triplet with length=3, got: {value!r}")
+    return int(value[0]), int(value[1]), int(value[2])
+
+
+@dataclass(slots=True)
+class HealthBarConfig:
+    enabled: bool = False
+    region: Rect | None = None
+    hsv_lower_1: tuple[int, int, int] = (0, 70, 40)
+    hsv_upper_1: tuple[int, int, int] = (12, 255, 255)
+    hsv_lower_2: tuple[int, int, int] = (170, 70, 40)
+    hsv_upper_2: tuple[int, int, int] = (179, 255, 255)
+    column_fill_threshold: float = 0.08
+    min_visible_pixels: int = 200
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "HealthBarConfig":
+        if not data:
+            return cls()
+        region_raw = data.get("region")
+        region = Rect.from_dict(region_raw) if region_raw else None
+        return cls(
+            enabled=bool(data.get("enabled", cls.enabled)),
+            region=region,
+            hsv_lower_1=_parse_hsv_triplet(data.get("hsv_lower_1"), cls.hsv_lower_1),
+            hsv_upper_1=_parse_hsv_triplet(data.get("hsv_upper_1"), cls.hsv_upper_1),
+            hsv_lower_2=_parse_hsv_triplet(data.get("hsv_lower_2"), cls.hsv_lower_2),
+            hsv_upper_2=_parse_hsv_triplet(data.get("hsv_upper_2"), cls.hsv_upper_2),
+            column_fill_threshold=float(
+                data.get("column_fill_threshold", cls.column_fill_threshold)
+            ),
+            min_visible_pixels=int(data.get("min_visible_pixels", cls.min_visible_pixels)),
+        )
+
+
 @dataclass(slots=True)
 class RewardConfig:
     survival_reward: float = 0.01
@@ -124,6 +166,7 @@ class EpisodeConfig:
     max_steps: int = 5000
     action_repeat: int = 1
     click_hold_s: float = 0.01
+    max_clicks_per_second: float = 3.0
     inter_step_sleep_s: float = 0.0
 
     @classmethod
@@ -134,6 +177,9 @@ class EpisodeConfig:
             max_steps=int(data.get("max_steps", cls.max_steps)),
             action_repeat=int(data.get("action_repeat", cls.action_repeat)),
             click_hold_s=float(data.get("click_hold_s", cls.click_hold_s)),
+            max_clicks_per_second=float(
+                data.get("max_clicks_per_second", cls.max_clicks_per_second)
+            ),
             inter_step_sleep_s=float(data.get("inter_step_sleep_s", cls.inter_step_sleep_s)),
         )
 
@@ -146,6 +192,7 @@ class ResetMacroStep:
     y: int | None = None
     button: str = "left"
     key: str | None = None
+    relative_to_capture: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ResetMacroStep":
@@ -156,6 +203,7 @@ class ResetMacroStep:
             y=int(data["y"]) if data.get("y") is not None else None,
             button=str(data.get("button", "left")),
             key=data.get("key"),
+            relative_to_capture=bool(data.get("relative_to_capture", cls.relative_to_capture)),
         )
 
 
@@ -191,6 +239,9 @@ class EnvConfig:
     episode: EpisodeConfig = field(default_factory=EpisodeConfig)
     reset_macro: list[ResetMacroStep] = field(default_factory=list)
     score_ocr: ScoreOCRConfig = field(default_factory=ScoreOCRConfig)
+    health_bar: HealthBarConfig = field(default_factory=HealthBarConfig)
+    game_over_on_health_missing: bool = False
+    health_missing_patience: int = 3
     game_over_template: str | None = None
     game_over_threshold: float = 0.9
 
@@ -210,6 +261,13 @@ class EnvConfig:
             episode=EpisodeConfig.from_dict(data.get("episode")),
             reset_macro=reset_macro,
             score_ocr=ScoreOCRConfig.from_dict(data.get("score_ocr")),
+            health_bar=HealthBarConfig.from_dict(data.get("health_bar")),
+            game_over_on_health_missing=bool(
+                data.get("game_over_on_health_missing", cls.game_over_on_health_missing)
+            ),
+            health_missing_patience=int(
+                data.get("health_missing_patience", cls.health_missing_patience)
+            ),
             game_over_template=data.get("game_over_template"),
             game_over_threshold=float(data.get("game_over_threshold", cls.game_over_threshold)),
         )
