@@ -81,6 +81,9 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - `env.score_ocr`: score region + optional tesseract path
 - `env.health_bar`: health bar detection settings (`method = "profile"` or `"scanline"`)
 - `env.game_over_on_health_missing = true` to terminate when bar disappears
+- `env.game_over_template` can match the death-overlay screen directly
+- `env.reset_ready_template` can match the menu screen before pressing `Start`
+- `env.round_start_timeout_s` lets `reset()` wait until the HUD comes back after clicking `Start`
 - set `env.episode.max_clicks_per_second = 3.0` to cap click rate
 - set `env.health_bar.invert_percent = true` if monitor output is directionally inverted
 - tune `env.health_bar.adaptive_fill_peak_ratio` if dark baseline is being counted as fill
@@ -128,6 +131,11 @@ irisu-monitor --config configs/base.toml --auto-reset
 
 Use a click step in `env.reset_macro` that targets the `Start` button.
 If `relative_to_capture = true`, `x`/`y` are interpreted relative to the capture frame's top-left corner.
+For a robust death -> menu -> new run loop:
+
+- terminate on health-bar disappearance and/or a death-overlay template
+- optionally wait for `env.reset_ready_template` (menu screen) before running the reset macro
+- let `env.reset()` wait for the HUD to reappear before returning the first observation
 
 ```toml
 [[env.reset_macro]]

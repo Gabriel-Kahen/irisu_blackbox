@@ -334,6 +334,12 @@ class EnvConfig:
     health_missing_patience: int = 3
     game_over_template: str | None = None
     game_over_threshold: float = 0.9
+    reset_ready_template: str | None = None
+    reset_ready_threshold: float = 0.92
+    reset_ready_timeout_s: float = 6.0
+    reset_ready_poll_s: float = 0.05
+    round_start_timeout_s: float = 6.0
+    round_start_poll_s: float = 0.05
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "EnvConfig":
@@ -361,6 +367,20 @@ class EnvConfig:
             ),
             game_over_template=data.get("game_over_template"),
             game_over_threshold=float(data.get("game_over_threshold", defaults.game_over_threshold)),
+            reset_ready_template=data.get("reset_ready_template"),
+            reset_ready_threshold=float(
+                data.get("reset_ready_threshold", defaults.reset_ready_threshold)
+            ),
+            reset_ready_timeout_s=float(
+                data.get("reset_ready_timeout_s", defaults.reset_ready_timeout_s)
+            ),
+            reset_ready_poll_s=float(data.get("reset_ready_poll_s", defaults.reset_ready_poll_s)),
+            round_start_timeout_s=float(
+                data.get("round_start_timeout_s", defaults.round_start_timeout_s)
+            ),
+            round_start_poll_s=float(
+                data.get("round_start_poll_s", defaults.round_start_poll_s)
+            ),
         )
 
 
@@ -456,6 +476,11 @@ def load_config(path: str | Path) -> RootConfig:
 
     cfg.env.game_over_template = _resolve_optional_path(
         cfg.env.game_over_template,
+        config_path=path_obj,
+        expect_dir=False,
+    )
+    cfg.env.reset_ready_template = _resolve_optional_path(
+        cfg.env.reset_ready_template,
         config_path=path_obj,
         expect_dir=False,
     )

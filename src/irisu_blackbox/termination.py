@@ -17,7 +17,7 @@ class TemplateTerminationDetector:
                 raise RuntimeError(f"Could not read game-over template image: {path}")
             self.template = template
 
-    def is_game_over(self, frame_bgr: np.ndarray) -> bool:
+    def matches(self, frame_bgr: np.ndarray) -> bool:
         if self.template is None:
             return False
 
@@ -29,3 +29,6 @@ class TemplateTerminationDetector:
         result = cv2.matchTemplate(gray, self.template, cv2.TM_CCOEFF_NORMED)
         _, max_value, _, _ = cv2.minMaxLoc(result)
         return bool(max_value >= self.threshold)
+
+    def is_game_over(self, frame_bgr: np.ndarray) -> bool:
+        return self.matches(frame_bgr)

@@ -9,6 +9,12 @@ game_over_on_health_missing = true
 health_missing_patience = 3
 game_over_template = ""
 game_over_threshold = 0.92
+reset_ready_template = ""
+reset_ready_threshold = 0.92
+reset_ready_timeout_s = 6.0
+reset_ready_poll_s = 0.05
+round_start_timeout_s = 6.0
+round_start_poll_s = 0.05
 
 [env.window]
 title_regex = "Irisu syndrome"
