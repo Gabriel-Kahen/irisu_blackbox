@@ -59,14 +59,14 @@ kind = "sleep"
 duration_s = 0.8
 
 [env.score_ocr]
-enabled = false
-tesseract_cmd = ""
+enabled = true
+tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
 
 [env.score_ocr.region]
-left = 255
-top = 442
-width = 140
-height = 60
+left = 204
+top = 445
+width = 223
+height = 28
 
 [env.health_bar]
 enabled = true
