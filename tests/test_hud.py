@@ -106,3 +106,38 @@ def test_scanline_boundary_estimates_right_to_left_fill():
     assert hud.health_visible is True
     assert hud.health_percent is not None
     assert 0.72 <= hud.health_percent <= 0.78
+
+
+def test_health_smoothing_window_reduces_single_frame_spike():
+    y = 40
+    x0 = 20
+    x1 = 179
+
+    def _frame(fill_end: int) -> np.ndarray:
+        frame = np.zeros((100, 220, 3), dtype=np.uint8)
+        frame[y - 1 : y + 2, x0 : fill_end + 1] = (0, 0, 210)
+        frame[y - 1 : y + 2, fill_end + 1 : x1 + 1] = (0, 0, 50)
+        return frame
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="left_to_right",
+        min_visible_pixels=10,
+        smoothing_window=3,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    h1 = reader.read(_frame(145)).health_percent  # ~0.8
+    h2 = reader.read(_frame(45)).health_percent   # ~0.2 spike
+    h3 = reader.read(_frame(146)).health_percent  # ~0.8 again
+
+    assert h1 is not None and h2 is not None and h3 is not None
+    assert 0.75 <= h1 <= 0.9
+    # Median of [~0.8, ~0.2, ~0.8] should settle near ~0.8.
+    assert 0.7 <= h3 <= 0.9

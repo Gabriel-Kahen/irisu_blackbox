@@ -83,6 +83,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - tune `env.health_bar.adaptive_fill_peak_ratio` if dark baseline is being counted as fill
 - set `env.health_bar.fill_direction = "left_to_right"` (or `"right_to_left"`) for edge-based fill %
 - for constant UI, use `method = "scanline"` with fixed `scanline_start_x/end_x/y`
+- increase `env.health_bar.smoothing_window` (e.g. 5-9) to reduce one-frame health spikes
 
 5. Use calibration preview to verify grid alignment:
 

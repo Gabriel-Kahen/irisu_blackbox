@@ -120,6 +120,7 @@ class HealthBarConfig:
     column_fill_threshold: float = 0.08
     adaptive_fill_peak_ratio: float = 0.55
     min_visible_pixels: int = 200
+    smoothing_window: int = 5
     fill_direction: str = "left_to_right"
     invert_percent: bool = False
 
@@ -157,6 +158,7 @@ class HealthBarConfig:
                 data.get("adaptive_fill_peak_ratio", cls.adaptive_fill_peak_ratio)
             ),
             min_visible_pixels=int(data.get("min_visible_pixels", cls.min_visible_pixels)),
+            smoothing_window=int(data.get("smoothing_window", cls.smoothing_window)),
             fill_direction=str(data.get("fill_direction", cls.fill_direction)),
             invert_percent=bool(data.get("invert_percent", cls.invert_percent)),
         )

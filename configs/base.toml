@@ -83,6 +83,7 @@ scanline_contrast_threshold = 0.02
 column_fill_threshold = 0.04
 adaptive_fill_peak_ratio = 0.35
 min_visible_pixels = 40
+smoothing_window = 5
 fill_direction = "right_to_left"
 invert_percent = true
 hsv_lower_1 = [0, 70, 40]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 
 import cv2
@@ -27,6 +28,8 @@ class HUDReader:
     def __init__(self, score_cfg: ScoreOCRConfig, health_cfg: HealthBarConfig) -> None:
         self.score_cfg = score_cfg
         self.health_cfg = health_cfg
+        self._health_smoothing_window = max(1, int(self.health_cfg.smoothing_window))
+        self._health_history: deque[float] = deque(maxlen=self._health_smoothing_window)
 
     @staticmethod
     def _crop(frame_bgr: np.ndarray, region: Rect) -> np.ndarray | None:
@@ -227,11 +230,32 @@ class HUDReader:
     def read(self, frame_bgr: np.ndarray) -> HUDState:
         score = self._read_score(frame_bgr)
         health_percent, health_visible = self._read_health(frame_bgr)
+        health_percent = self._smooth_health_percent(health_percent, health_visible)
         return HUDState(
             score=score,
             health_percent=health_percent,
             health_visible=health_visible,
         )
+
+    def _smooth_health_percent(
+        self,
+        percent: float | None,
+        visible: bool | None,
+    ) -> float | None:
+        if percent is None:
+            self._health_history.clear()
+            return None
+
+        if visible is not True:
+            self._health_history.clear()
+            return percent
+
+        self._health_history.append(float(percent))
+        if self._health_smoothing_window <= 1:
+            return float(percent)
+
+        values = np.asarray(self._health_history, dtype=np.float32)
+        return float(np.median(values))
 
 
 def _find_true_spans(col_mask: np.ndarray) -> list[tuple[int, int]]:
