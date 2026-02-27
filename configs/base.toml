@@ -75,12 +75,12 @@ template_expected_digits = 8
 template_inner_left = 0
 template_inner_right = 0
 monotonic_non_decreasing = false
-score_smoothing_window = 3
-max_step_decrease = 2500
+score_smoothing_window = 5
+max_step_decrease = 1000
 outlier_confirm_frames = 2
 hold_last_value_when_missing = true
 min_confidence = 40.0
-max_step_increase = 2500
+max_step_increase = 1000
 
 [env.score_ocr.region]
 left = 204

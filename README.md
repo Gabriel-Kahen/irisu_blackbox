@@ -91,9 +91,10 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - for constant UI, use `method = "scanline"` with fixed `scanline_start_x/end_x/y`
 - increase `env.health_bar.smoothing_window` (e.g. 5-9) to reduce one-frame health spikes
 - set `env.health_bar.max_delta_per_step` to reject implausible one-frame health jumps
-- set `env.score_ocr.score_smoothing_window = 3` for light anti-jitter smoothing
+- set `env.score_ocr.score_smoothing_window = 5` for light anti-jitter smoothing
 - raise `env.score_ocr.min_confidence` to ignore weak OCR reads
 - set `env.score_ocr.max_step_increase` / `max_step_decrease` to reject implausible score jumps
+  around `1000+` points per frame
 - set `env.score_ocr.outlier_confirm_frames` for how many consecutive suspicious reads are needed
 - set `env.score_ocr.method = "template"` to use digit-template matching
 - set `env.score_ocr.template_dir = "assets/score_templates"` and add `0..9` image files

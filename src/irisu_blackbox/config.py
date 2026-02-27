@@ -87,12 +87,12 @@ class ScoreOCRConfig:
     template_inner_left: int = 0
     template_inner_right: int = 0
     monotonic_non_decreasing: bool = False
-    score_smoothing_window: int = 3
-    max_step_decrease: int = 2500
+    score_smoothing_window: int = 5
+    max_step_decrease: int = 1000
     outlier_confirm_frames: int = 2
     hold_last_value_when_missing: bool = True
     min_confidence: float = 40.0
-    max_step_increase: int = 2500
+    max_step_increase: int = 1000
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ScoreOCRConfig":
