@@ -230,6 +230,10 @@ class RewardConfig:
     stale_patience: int = 90
     stale_penalty: float = -0.25
     score_delta_scale: float = 0.001
+    score_value_scale: float = 0.02
+    score_value_log_max: float = 50000.0
+    health_value_scale: float = 0.03
+    health_delta_scale: float = 0.5
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "RewardConfig":
@@ -245,6 +249,12 @@ class RewardConfig:
             stale_patience=int(data.get("stale_patience", defaults.stale_patience)),
             stale_penalty=float(data.get("stale_penalty", defaults.stale_penalty)),
             score_delta_scale=float(data.get("score_delta_scale", defaults.score_delta_scale)),
+            score_value_scale=float(data.get("score_value_scale", defaults.score_value_scale)),
+            score_value_log_max=float(
+                data.get("score_value_log_max", defaults.score_value_log_max)
+            ),
+            health_value_scale=float(data.get("health_value_scale", defaults.health_value_scale)),
+            health_delta_scale=float(data.get("health_delta_scale", defaults.health_delta_scale)),
         )
 
 
@@ -269,6 +279,22 @@ class EpisodeConfig:
                 data.get("max_clicks_per_second", defaults.max_clicks_per_second)
             ),
             inter_step_sleep_s=float(data.get("inter_step_sleep_s", defaults.inter_step_sleep_s)),
+        )
+
+
+@dataclass(slots=True)
+class HUDFeatureConfig:
+    enabled: bool = True
+    score_log_max: float = 50000.0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "HUDFeatureConfig":
+        if not data:
+            return cls()
+        defaults = cls()
+        return cls(
+            enabled=bool(data.get("enabled", defaults.enabled)),
+            score_log_max=float(data.get("score_log_max", defaults.score_log_max)),
         )
 
 
@@ -326,6 +352,7 @@ class EnvConfig:
     window: WindowConfig = field(default_factory=WindowConfig)
     action_grid: ActionGridConfig = field(default_factory=ActionGridConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
+    hud_features: HUDFeatureConfig = field(default_factory=HUDFeatureConfig)
     episode: EpisodeConfig = field(default_factory=EpisodeConfig)
     game_over_macro: list[ResetMacroStep] = field(default_factory=list)
     reset_macro: list[ResetMacroStep] = field(default_factory=list)
@@ -360,6 +387,7 @@ class EnvConfig:
             window=WindowConfig.from_dict(data.get("window")),
             action_grid=ActionGridConfig.from_dict(data.get("action_grid", {})),
             reward=RewardConfig.from_dict(data.get("reward")),
+            hud_features=HUDFeatureConfig.from_dict(data.get("hud_features")),
             episode=EpisodeConfig.from_dict(data.get("episode")),
             game_over_macro=game_over_macro,
             reset_macro=reset_macro,

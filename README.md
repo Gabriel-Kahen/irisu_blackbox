@@ -6,7 +6,7 @@ This repository is a practical baseline for training an RL agent against **unmod
 - simulated mouse clicks
 - no internal game-state access
 
-It is built around a Gymnasium environment plus `RecurrentPPO` (`CnnLstmPolicy`) so you can start with a mock backend, then switch to live Windows control.
+It is built around a Gymnasium environment plus `RecurrentPPO`. By default the policy is now recurrent multi-input: a CNN/LSTM over the live frame stack plus explicit HUD scalars for score and health.
 
 ## What Is Included
 
@@ -18,7 +18,8 @@ It is built around a Gymnasium environment plus `RecurrentPPO` (`CnnLstmPolicy`)
   - frame-activity reward
   - cascade bonus proxy (large frame deltas)
   - stale-state penalty
-  - optional OCR score-delta reward
+  - score-delta and score-value reward
+  - health-value and health-delta reward
 - HUD extraction hooks:
   - score OCR reader
   - health bar percentage reader
@@ -102,6 +103,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - set `env.score_ocr.template_expected_digits = 8` for the fixed 8-slot Irisu score
 - tune `env.score_ocr.template_inner_left/right` if the score region has extra side padding
 - set `env.score_ocr.template_fallback_to_tesseract = false` for deterministic template-only reads
+- leave `env.hud_features.enabled = true` so the policy gets explicit `health` and `score` scalars
 
 5. Use calibration preview to verify grid alignment:
 
@@ -178,11 +180,16 @@ If no explicit title list is provided, envs use the same regex and select window
 
 Reward is composed as:
 
-`survival + activity + cascade_bonus + stale_penalty + score_delta`
+`survival + activity + cascade_bonus + stale_penalty + score_delta + score_value + health_value + health_delta`
+
+The policy observation is also richer than before:
+
+- `image`: stacked grayscale frames from the captured game window
+- `hud`: `[health_percent, normalized_score, health_visible, score_visible]`
 
 For strict black-box setups with no OCR, leave score reward disabled and rely on time/activity proxies until your capture/reset loop is stable.
 
-When score OCR is enabled, `score_delta` uses the per-step score increase from HUD readings.
+When score OCR is enabled, `score_delta` uses the per-step score increase from HUD readings, while `score_value` gives a smaller dense reward for staying in higher-scoring states. `health_value` rewards staying healthy; `health_delta` penalizes drops immediately.
 
 ## Safety Notes
 

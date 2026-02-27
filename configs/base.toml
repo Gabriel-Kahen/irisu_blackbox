@@ -44,7 +44,15 @@ cascade_bonus = 0.25
 stale_threshold = 0.01
 stale_patience = 90
 stale_penalty = -0.25
-score_delta_scale = 0.001
+score_delta_scale = 0.002
+score_value_scale = 0.02
+score_value_log_max = 50000.0
+health_value_scale = 0.03
+health_delta_scale = 0.5
+
+[env.hud_features]
+enabled = true
+score_log_max = 50000.0
 
 [env.episode]
 max_steps = 5000

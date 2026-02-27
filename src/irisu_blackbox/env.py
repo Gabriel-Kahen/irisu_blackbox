@@ -16,7 +16,10 @@ from irisu_blackbox.reward import RewardShaper
 from irisu_blackbox.termination import TemplateTerminationDetector
 
 
-class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
+ObsType = np.ndarray | dict[str, np.ndarray]
+
+
+class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 30}
 
     def __init__(self, cfg: EnvConfig, backend: GameBackend) -> None:
@@ -36,18 +39,54 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
         )
 
         self.action_space = spaces.Discrete(self.cfg.action_grid.action_count)
-        self.observation_space = spaces.Box(
+        self._use_hud_features = bool(self.cfg.hud_features.enabled)
+        frame_space = spaces.Box(
             low=0.0,
             high=1.0,
             shape=(self.cfg.frame_stack, self.cfg.obs_height, self.cfg.obs_width),
             dtype=np.float32,
         )
+        if self._use_hud_features:
+            self.observation_space = spaces.Dict(
+                {
+                    "image": frame_space,
+                    "hud": spaces.Box(low=0.0, high=1.0, shape=(4,), dtype=np.float32),
+                }
+            )
+        else:
+            self.observation_space = frame_space
 
         self._step_count = 0
         self._last_frame_bgr: np.ndarray | None = None
         self._health_missing_streak = 0
         self._last_click_time = 0.0
         self._pending_post_game_over_delay = False
+
+    def _normalize_score(self, score: int | None) -> float:
+        if score is None or score <= 0:
+            return 0.0
+        max_score = max(1.0, float(self.cfg.hud_features.score_log_max))
+        denom = float(np.log1p(max_score))
+        if denom <= 0:
+            return 0.0
+        return float(min(1.0, np.log1p(float(score)) / denom))
+
+    def _build_observation(self, image_obs: np.ndarray, hud) -> ObsType:
+        if not self._use_hud_features:
+            return image_obs
+        hud_vector = np.array(
+            [
+                float(hud.health_percent) if hud.health_visible is True and hud.health_percent is not None else 0.0,
+                self._normalize_score(hud.score),
+                1.0 if hud.health_visible is True else 0.0,
+                1.0 if hud.score is not None else 0.0,
+            ],
+            dtype=np.float32,
+        )
+        return {
+            "image": image_obs,
+            "hud": hud_vector,
+        }
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
@@ -60,8 +99,15 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
         self.hud_reader.reset()
         raw, hud = self._wait_for_round_start()
         processed = self.frame_processor.preprocess(raw)
-        obs = self.frame_processor.reset(processed)
-        self.reward_shaper.reset(processed, raw, observed_score=hud.score)
+        image_obs = self.frame_processor.reset(processed)
+        obs = self._build_observation(image_obs, hud)
+        self.reward_shaper.reset(
+            processed,
+            raw,
+            observed_score=hud.score,
+            observed_health_percent=hud.health_percent,
+            health_visible=hud.health_visible,
+        )
 
         self._step_count = 0
         self._last_frame_bgr = raw
@@ -153,9 +199,16 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
         raw = self.backend.capture_frame()
         hud = self.hud_reader.read(raw)
         processed = self.frame_processor.preprocess(raw)
-        obs = self.frame_processor.push(processed)
+        image_obs = self.frame_processor.push(processed)
+        obs = self._build_observation(image_obs, hud)
 
-        reward, reward_terms = self.reward_shaper.step(processed, raw, observed_score=hud.score)
+        reward, reward_terms = self.reward_shaper.step(
+            processed,
+            raw,
+            observed_score=hud.score,
+            observed_health_percent=hud.health_percent,
+            health_visible=hud.health_visible,
+        )
         self._step_count += 1
 
         backend_done = bool(getattr(self.backend, "game_over", False))

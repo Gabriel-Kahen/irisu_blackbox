@@ -4,6 +4,7 @@ import argparse
 import math
 from pathlib import Path
 
+from gymnasium import spaces
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.utils import set_random_seed
@@ -54,9 +55,14 @@ def _make_vec_env(cfg: RootConfig, window_titles: list[str] | None):
 def _make_model(cfg: RootConfig, vec_env: VecMonitor, run_dir: Path) -> RecurrentPPO:
     rollout_size = cfg.train.n_steps * cfg.train.n_envs
     batch_size = _resolve_batch_size(cfg.train.batch_size, rollout_size)
+    policy = (
+        "MultiInputLstmPolicy"
+        if isinstance(vec_env.observation_space, spaces.Dict)
+        else "CnnLstmPolicy"
+    )
 
     return RecurrentPPO(
-        policy="CnnLstmPolicy",
+        policy=policy,
         env=vec_env,
         learning_rate=cfg.train.learning_rate,
         n_steps=cfg.train.n_steps,

@@ -215,3 +215,26 @@ def test_env_reset_applies_post_game_over_delay(monkeypatch):
         assert 1.0 in sleeps
     finally:
         env.close()
+
+
+def test_env_returns_dict_observation_with_hud_features():
+    cfg = EnvConfig(
+        backend="mock",
+        obs_width=64,
+        obs_height=64,
+        frame_stack=2,
+        action_grid=ActionGridConfig(rows=4, cols=4, left=0, top=0, right=64, bottom=64),
+        episode=EpisodeConfig(max_steps=10, action_repeat=1),
+    )
+
+    backend = MockGameBackend(MockBackendConfig(width=64, height=64, seed=0))
+    env = IrisuBlackBoxEnv(cfg=cfg, backend=backend)
+    try:
+        obs, _ = env.reset()
+        assert isinstance(obs, dict)
+        assert set(obs.keys()) == {"image", "hud"}
+        assert obs["image"].shape == (2, 64, 64)
+        assert obs["hud"].shape == (4,)
+        assert obs["hud"].dtype == np.float32
+    finally:
+        env.close()
