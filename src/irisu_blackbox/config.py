@@ -112,6 +112,7 @@ class HealthBarConfig:
     hsv_lower_2: tuple[int, int, int] = (170, 70, 40)
     hsv_upper_2: tuple[int, int, int] = (179, 255, 255)
     column_fill_threshold: float = 0.08
+    adaptive_fill_peak_ratio: float = 0.55
     min_visible_pixels: int = 200
     invert_percent: bool = False
 
@@ -130,6 +131,9 @@ class HealthBarConfig:
             hsv_upper_2=_parse_hsv_triplet(data.get("hsv_upper_2"), cls.hsv_upper_2),
             column_fill_threshold=float(
                 data.get("column_fill_threshold", cls.column_fill_threshold)
+            ),
+            adaptive_fill_peak_ratio=float(
+                data.get("adaptive_fill_peak_ratio", cls.adaptive_fill_peak_ratio)
             ),
             min_visible_pixels=int(data.get("min_visible_pixels", cls.min_visible_pixels)),
             invert_percent=bool(data.get("invert_percent", cls.invert_percent)),

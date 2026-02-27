@@ -71,15 +71,23 @@ class HUDReader:
         if not visible:
             return 0.0, False
 
-        col_fill = (mask.astype(np.float32) / 255.0).mean(axis=0)
-        filled_cols = np.flatnonzero(col_fill >= self.health_cfg.column_fill_threshold)
+        # Estimate fill from bright-red energy per column so dark baseline red is ignored.
+        value = hsv[:, :, 2].astype(np.float32) / 255.0
+        red_value = value * (mask.astype(np.float32) / 255.0)
+        col_strength = red_value.mean(axis=0)
+        peak_strength = float(col_strength.max())
+        adaptive_threshold = max(
+            self.health_cfg.column_fill_threshold,
+            peak_strength * self.health_cfg.adaptive_fill_peak_ratio,
+        )
+        filled_cols = np.flatnonzero(col_strength >= adaptive_threshold)
         if filled_cols.size == 0:
             percent = 0.0
             if self.health_cfg.invert_percent:
                 percent = 1.0 - percent
             return percent, True
 
-        percent = float((filled_cols.max() + 1) / mask.shape[1])
+        percent = float(filled_cols.size / mask.shape[1])
         percent = max(0.0, min(1.0, percent))
         if self.health_cfg.invert_percent:
             percent = 1.0 - percent

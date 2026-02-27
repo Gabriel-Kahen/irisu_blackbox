@@ -80,6 +80,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - `env.game_over_on_health_missing = true` to terminate when bar disappears
 - set `env.episode.max_clicks_per_second = 3.0` to cap click rate
 - set `env.health_bar.invert_percent = true` if monitor output is directionally inverted
+- tune `env.health_bar.adaptive_fill_peak_ratio` if dark baseline is being counted as fill
 
 5. Use calibration preview to verify grid alignment:
 
