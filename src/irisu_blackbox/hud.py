@@ -80,14 +80,37 @@ class HUDReader:
             self.health_cfg.column_fill_threshold,
             peak_strength * self.health_cfg.adaptive_fill_peak_ratio,
         )
-        filled_cols = np.flatnonzero(col_strength >= adaptive_threshold)
-        if filled_cols.size == 0:
+        col_mask = (col_strength >= adaptive_threshold).astype(np.uint8)
+        if col_mask.size == 0:
             percent = 0.0
             if self.health_cfg.invert_percent:
                 percent = 1.0 - percent
             return percent, True
 
-        percent = float(filled_cols.size / mask.shape[1])
+        # Close tiny holes in the per-column signal.
+        closed = cv2.morphologyEx(
+            (col_mask[None, :] * 255),
+            cv2.MORPH_CLOSE,
+            np.ones((1, 5), dtype=np.uint8),
+        )
+        col_mask = (closed[0] > 0).astype(np.uint8)
+
+        spans = _find_true_spans(col_mask)
+        if not spans:
+            percent = 0.0
+            if self.health_cfg.invert_percent:
+                percent = 1.0 - percent
+            return percent, True
+
+        # Use the longest bright-red span as the active fill.
+        start, end = max(spans, key=lambda item: item[1] - item[0] + 1)
+        width = mask.shape[1]
+        direction = self.health_cfg.fill_direction.lower()
+        if direction == "right_to_left":
+            percent = float((width - start) / width)
+        else:
+            percent = float((end + 1) / width)
+
         percent = max(0.0, min(1.0, percent))
         if self.health_cfg.invert_percent:
             percent = 1.0 - percent
@@ -102,3 +125,13 @@ class HUDReader:
             health_percent=health_percent,
             health_visible=health_visible,
         )
+
+
+def _find_true_spans(col_mask: np.ndarray) -> list[tuple[int, int]]:
+    if col_mask.size == 0:
+        return []
+    padded = np.concatenate(([0], col_mask.astype(np.int8), [0]))
+    diff = np.diff(padded)
+    starts = np.flatnonzero(diff == 1)
+    ends = np.flatnonzero(diff == -1) - 1
+    return [(int(s), int(e)) for s, e in zip(starts, ends)]

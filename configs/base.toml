@@ -73,6 +73,7 @@ enabled = true
 column_fill_threshold = 0.08
 adaptive_fill_peak_ratio = 0.65
 min_visible_pixels = 80
+fill_direction = "left_to_right"
 invert_percent = false
 hsv_lower_1 = [0, 70, 40]
 hsv_upper_1 = [12, 255, 255]

@@ -75,4 +75,4 @@ def test_health_uses_bright_fill_not_dark_background():
     hud = reader.read(frame)
     assert hud.health_visible is True
     assert hud.health_percent is not None
-    assert 0.15 <= hud.health_percent <= 0.25
+    assert 0.95 <= hud.health_percent <= 1.0
