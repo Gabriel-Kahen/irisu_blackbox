@@ -42,8 +42,13 @@ def _print_score_template_status(cfg_path: Path, method: str, template_dir: str 
         if not child.is_file():
             continue
         stem = child.stem.strip()
+        if not stem:
+            continue
         if len(stem) == 1 and stem.isdigit():
             found_digits.add(int(stem))
+            continue
+        if stem[0].isdigit():
+            found_digits.add(int(stem[0]))
 
     missing = [str(i) for i in range(10) if i not in found_digits]
     if missing:

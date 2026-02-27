@@ -30,6 +30,17 @@ class ScoreOCRReading:
     source: str = "unknown"
 
 
+def _digit_from_stem(stem: str) -> int | None:
+    text = stem.strip()
+    if not text:
+        return None
+    if len(text) == 1 and text.isdigit():
+        return int(text)
+    if text[0].isdigit():
+        return int(text[0])
+    return None
+
+
 def _find_true_spans(mask_1d: np.ndarray) -> list[tuple[int, int]]:
     if mask_1d.size == 0:
         return []
@@ -149,10 +160,25 @@ def _segment_digit_masks(crop_bgr: np.ndarray) -> list[np.ndarray]:
 
 
 def _find_template_file(template_dir: Path, digit: int) -> Path | None:
+    # Prefer exact names first (e.g., "6.png").
     for suffix in _TEMPLATE_SUFFIXES:
         candidate = template_dir / f"{digit}{suffix}"
         if candidate.exists():
             return candidate
+
+    # Fallback: accept prefixed names (e.g., "6_copy.png", "6 (1).PNG").
+    matches: list[Path] = []
+    for child in template_dir.iterdir():
+        if not child.is_file():
+            continue
+        if child.suffix.lower() not in _TEMPLATE_SUFFIXES:
+            continue
+        stem_digit = _digit_from_stem(child.stem)
+        if stem_digit == digit:
+            matches.append(child)
+    if matches:
+        matches.sort(key=lambda p: (len(p.name), p.name.lower()))
+        return matches[0]
     return None
 
 

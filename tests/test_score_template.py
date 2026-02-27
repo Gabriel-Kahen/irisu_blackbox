@@ -103,3 +103,25 @@ def test_template_reader_returns_none_without_templates(tmp_path: Path):
     )
 
     assert reading is None
+
+
+def test_template_reader_accepts_prefixed_template_filenames(tmp_path: Path):
+    for digit in range(10):
+        image = _draw_score_text(str(digit))
+        crop = _tight_crop(image)
+        ok = cv2.imwrite(str(tmp_path / f"{digit}_copy.png"), crop)
+        assert ok
+
+    score_text = "00000298"
+    score_image = _draw_score_text(score_text)
+
+    reading = extract_score_reading(
+        frame_bgr=score_image,
+        region=Rect(left=0, top=0, width=score_image.shape[1], height=score_image.shape[0]),
+        method="template",
+        template_dir=str(tmp_path),
+        template_fallback_to_tesseract=False,
+    )
+
+    assert reading is not None
+    assert reading.score == 298
