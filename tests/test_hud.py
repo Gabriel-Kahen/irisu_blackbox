@@ -248,6 +248,29 @@ def test_score_one_frame_large_spike_is_rejected():
     assert s3 == 1010
 
 
+def test_score_one_frame_large_drop_is_rejected():
+    reader = HUDReader(
+        ScoreOCRConfig(
+            enabled=False,
+            monotonic_non_decreasing=False,
+            score_smoothing_window=1,
+            hold_last_value_when_missing=True,
+            max_step_increase=500,
+            max_step_decrease=500,
+            outlier_confirm_frames=2,
+        ),
+        HealthBarConfig(enabled=False),
+    )
+
+    s1 = reader._stabilize_score(4000)
+    s2 = reader._stabilize_score(25)    # suspicious drop
+    s3 = reader._stabilize_score(3985)  # normal read again
+
+    assert s1 == 4000
+    assert s2 == 4000
+    assert s3 == 3985
+
+
 def test_score_light_median_smoothing_reduces_one_frame_jitter():
     reader = HUDReader(
         ScoreOCRConfig(
@@ -268,3 +291,77 @@ def test_score_light_median_smoothing_reduces_one_frame_jitter():
     assert s2 == 180
     # Median of [100, 180, 102] -> 102, so one-frame spike is damped quickly.
     assert s3 == 102
+
+
+def test_health_outlier_drop_is_rejected():
+    y = 40
+    x0 = 20
+    x1 = 179
+
+    def _frame(fill_end: int) -> np.ndarray:
+        frame = np.zeros((100, 220, 3), dtype=np.uint8)
+        frame[y - 1 : y + 2, x0 : fill_end + 1] = (0, 0, 210)
+        frame[y - 1 : y + 2, fill_end + 1 : x1 + 1] = (0, 0, 50)
+        return frame
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="left_to_right",
+        min_visible_pixels=10,
+        smoothing_window=1,
+        max_delta_per_step=0.2,
+        outlier_confirm_frames=2,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    h1 = reader.read(_frame(145)).health_percent  # ~0.8
+    h2 = reader.read(_frame(35)).health_percent   # suspicious one-frame drop
+    h3 = reader.read(_frame(146)).health_percent  # stable ~0.8
+
+    assert h1 is not None and h2 is not None and h3 is not None
+    assert 0.75 <= h1 <= 0.9
+    assert 0.7 <= h2 <= 0.9
+    assert 0.75 <= h3 <= 0.9
+
+
+def test_health_outlier_rise_is_rejected():
+    y = 40
+    x0 = 20
+    x1 = 179
+
+    def _frame(fill_end: int) -> np.ndarray:
+        frame = np.zeros((100, 220, 3), dtype=np.uint8)
+        frame[y - 1 : y + 2, x0 : fill_end + 1] = (0, 0, 210)
+        frame[y - 1 : y + 2, fill_end + 1 : x1 + 1] = (0, 0, 50)
+        return frame
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="left_to_right",
+        min_visible_pixels=10,
+        smoothing_window=1,
+        max_delta_per_step=0.2,
+        outlier_confirm_frames=2,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    h1 = reader.read(_frame(35)).health_percent   # ~0.2
+    h2 = reader.read(_frame(145)).health_percent  # suspicious one-frame rise
+    h3 = reader.read(_frame(34)).health_percent   # stable ~0.2
+
+    assert h1 is not None and h2 is not None and h3 is not None
+    assert 0.1 <= h1 <= 0.3
+    assert 0.1 <= h2 <= 0.35
+    assert 0.08 <= h3 <= 0.3

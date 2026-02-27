@@ -88,6 +88,8 @@ class ScoreOCRConfig:
     template_inner_right: int = 0
     monotonic_non_decreasing: bool = False
     score_smoothing_window: int = 3
+    max_step_decrease: int = 2500
+    outlier_confirm_frames: int = 2
     hold_last_value_when_missing: bool = True
     min_confidence: float = 40.0
     max_step_increase: int = 2500
@@ -124,6 +126,10 @@ class ScoreOCRConfig:
             ),
             score_smoothing_window=int(
                 data.get("score_smoothing_window", defaults.score_smoothing_window)
+            ),
+            max_step_decrease=int(data.get("max_step_decrease", defaults.max_step_decrease)),
+            outlier_confirm_frames=int(
+                data.get("outlier_confirm_frames", defaults.outlier_confirm_frames)
             ),
             hold_last_value_when_missing=bool(
                 data.get("hold_last_value_when_missing", defaults.hold_last_value_when_missing)
@@ -162,6 +168,8 @@ class HealthBarConfig:
     adaptive_fill_peak_ratio: float = 0.55
     min_visible_pixels: int = 200
     smoothing_window: int = 5
+    max_delta_per_step: float = 0.14
+    outlier_confirm_frames: int = 2
     fill_direction: str = "left_to_right"
     invert_percent: bool = False
 
@@ -201,6 +209,12 @@ class HealthBarConfig:
             ),
             min_visible_pixels=int(data.get("min_visible_pixels", defaults.min_visible_pixels)),
             smoothing_window=int(data.get("smoothing_window", defaults.smoothing_window)),
+            max_delta_per_step=float(
+                data.get("max_delta_per_step", defaults.max_delta_per_step)
+            ),
+            outlier_confirm_frames=int(
+                data.get("outlier_confirm_frames", defaults.outlier_confirm_frames)
+            ),
             fill_direction=str(data.get("fill_direction", defaults.fill_direction)),
             invert_percent=bool(data.get("invert_percent", defaults.invert_percent)),
         )

@@ -31,16 +31,22 @@ class HUDReader:
         self._committed_score: int | None = None
         self._score_smoothing_window = max(1, int(self.score_cfg.score_smoothing_window))
         self._score_history: deque[int] = deque(maxlen=self._score_smoothing_window)
-        self._pending_large_score: int | None = None
-        self._pending_large_score_streak = 0
+        self._pending_score_outlier: int | None = None
+        self._pending_score_outlier_streak = 0
+        self._pending_score_outlier_direction = 0
+        self._committed_health_percent: float | None = None
+        self._pending_health_outlier: float | None = None
+        self._pending_health_outlier_streak = 0
+        self._pending_health_outlier_direction = 0
         self._health_smoothing_window = max(1, int(self.health_cfg.smoothing_window))
         self._health_history: deque[float] = deque(maxlen=self._health_smoothing_window)
 
     def reset(self) -> None:
         self._committed_score = None
         self._score_history.clear()
-        self._pending_large_score = None
-        self._pending_large_score_streak = 0
+        self._clear_score_outlier_state()
+        self._committed_health_percent = None
+        self._clear_health_outlier_state()
         self._health_history.clear()
 
     @staticmethod
@@ -269,6 +275,7 @@ class HUDReader:
 
     def _stabilize_score(self, raw_score: int | None) -> int | None:
         if raw_score is None:
+            self._clear_score_outlier_state()
             if self.score_cfg.hold_last_value_when_missing:
                 return self._committed_score
             return None
@@ -279,45 +286,78 @@ class HUDReader:
             self._committed_score = candidate
             self._score_history.clear()
             self._score_history.append(candidate)
-            self._pending_large_score = None
-            self._pending_large_score_streak = 0
+            self._clear_score_outlier_state()
             return self._committed_score
 
-        max_step = int(self.score_cfg.max_step_increase)
-        if max_step > 0 and candidate > (self._committed_score + max_step):
-            confirmed = self._confirm_large_jump(candidate, max_step)
+        if self._is_score_outlier(candidate):
+            confirmed = self._confirm_score_outlier(candidate)
             if confirmed is None:
-                # Large increase needs confirmation to avoid one-frame OCR spikes.
+                # Suspicious one-frame jump; keep last committed score for now.
                 return self._committed_score
             candidate = confirmed
         else:
-            self._pending_large_score = None
-            self._pending_large_score_streak = 0
+            self._clear_score_outlier_state()
 
+        if self.score_cfg.monotonic_non_decreasing:
+            candidate = max(int(self._committed_score), int(candidate))
         self._committed_score = self._smooth_score_candidate(candidate)
         return self._committed_score
 
-    def _confirm_large_jump(self, candidate: int, max_step: int) -> int | None:
-        tolerance = max(1, max_step // 2)
+    def _is_score_outlier(self, candidate: int) -> bool:
+        assert self._committed_score is not None
+        delta = int(candidate - self._committed_score)
+        up_limit = max(0, int(self.score_cfg.max_step_increase))
+        down_limit = max(0, int(self.score_cfg.max_step_decrease))
+        if up_limit > 0 and delta > up_limit:
+            return True
+        if down_limit > 0 and (-delta) > down_limit:
+            return True
+        return False
 
-        if self._pending_large_score is None:
-            self._pending_large_score = candidate
-            self._pending_large_score_streak = 1
+    def _clear_score_outlier_state(self) -> None:
+        self._pending_score_outlier = None
+        self._pending_score_outlier_streak = 0
+        self._pending_score_outlier_direction = 0
+
+    def _confirm_score_outlier(self, candidate: int) -> int | None:
+        assert self._committed_score is not None
+        direction = 1 if candidate >= self._committed_score else -1
+        limit = (
+            max(0, int(self.score_cfg.max_step_increase))
+            if direction > 0
+            else max(0, int(self.score_cfg.max_step_decrease))
+        )
+        if limit <= 0:
+            return candidate
+
+        tolerance = max(1, limit // 2)
+        confirm_frames = max(2, int(self.score_cfg.outlier_confirm_frames))
+
+        if (
+            self._pending_score_outlier is None
+            or self._pending_score_outlier_direction != direction
+        ):
+            self._pending_score_outlier = candidate
+            self._pending_score_outlier_streak = 1
+            self._pending_score_outlier_direction = direction
             return None
 
-        if candidate >= (self._pending_large_score - tolerance):
-            self._pending_large_score = max(self._pending_large_score, candidate)
-            self._pending_large_score_streak += 1
+        if direction > 0 and candidate >= (self._pending_score_outlier - tolerance):
+            self._pending_score_outlier = max(self._pending_score_outlier, candidate)
+            self._pending_score_outlier_streak += 1
+        elif direction < 0 and candidate <= (self._pending_score_outlier + tolerance):
+            self._pending_score_outlier = min(self._pending_score_outlier, candidate)
+            self._pending_score_outlier_streak += 1
         else:
-            self._pending_large_score = candidate
-            self._pending_large_score_streak = 1
+            self._pending_score_outlier = candidate
+            self._pending_score_outlier_streak = 1
+            self._pending_score_outlier_direction = direction
 
-        if self._pending_large_score_streak < 2:
+        if self._pending_score_outlier_streak < confirm_frames:
             return None
 
-        confirmed = int(self._pending_large_score)
-        self._pending_large_score = None
-        self._pending_large_score_streak = 0
+        confirmed = int(self._pending_score_outlier)
+        self._clear_score_outlier_state()
         return confirmed
 
     def _smooth_score_candidate(self, candidate: int) -> int:
@@ -336,19 +376,96 @@ class HUDReader:
         visible: bool | None,
     ) -> float | None:
         if percent is None:
+            self._committed_health_percent = None
+            self._clear_health_outlier_state()
             self._health_history.clear()
             return None
 
         if visible is not True:
+            self._committed_health_percent = None
+            self._clear_health_outlier_state()
             self._health_history.clear()
             return percent
 
-        self._health_history.append(float(percent))
+        candidate = float(percent)
+        if self._committed_health_percent is None:
+            self._committed_health_percent = candidate
+            self._health_history.clear()
+            self._health_history.append(candidate)
+            return candidate
+
+        if self._is_health_outlier(candidate):
+            confirmed = self._confirm_health_outlier(candidate)
+            if confirmed is None:
+                candidate = self._committed_health_percent
+            else:
+                candidate = confirmed
+        else:
+            self._clear_health_outlier_state()
+
+        self._health_history.append(float(candidate))
         if self._health_smoothing_window <= 1:
-            return float(percent)
+            self._committed_health_percent = float(candidate)
+            return float(candidate)
+
+        if len(self._health_history) < self._health_smoothing_window:
+            self._committed_health_percent = float(candidate)
+            return float(candidate)
 
         values = np.asarray(self._health_history, dtype=np.float32)
-        return float(np.median(values))
+        smoothed = float(np.median(values))
+        self._committed_health_percent = smoothed
+        return smoothed
+
+    def _is_health_outlier(self, candidate: float) -> bool:
+        if self._committed_health_percent is None:
+            return False
+        limit = max(0.0, float(self.health_cfg.max_delta_per_step))
+        if limit <= 0:
+            return False
+        return abs(float(candidate - self._committed_health_percent)) > limit
+
+    def _clear_health_outlier_state(self) -> None:
+        self._pending_health_outlier = None
+        self._pending_health_outlier_streak = 0
+        self._pending_health_outlier_direction = 0
+
+    def _confirm_health_outlier(self, candidate: float) -> float | None:
+        assert self._committed_health_percent is not None
+        direction = 1 if candidate >= self._committed_health_percent else -1
+        limit = max(0.0, float(self.health_cfg.max_delta_per_step))
+        if limit <= 0:
+            return float(candidate)
+
+        tolerance = max(0.01, limit * 0.5)
+        confirm_frames = max(2, int(self.health_cfg.outlier_confirm_frames))
+
+        if (
+            self._pending_health_outlier is None
+            or self._pending_health_outlier_direction != direction
+        ):
+            self._pending_health_outlier = float(candidate)
+            self._pending_health_outlier_streak = 1
+            self._pending_health_outlier_direction = direction
+            return None
+
+        if direction > 0 and candidate >= (self._pending_health_outlier - tolerance):
+            self._pending_health_outlier = max(self._pending_health_outlier, float(candidate))
+            self._pending_health_outlier_streak += 1
+        elif direction < 0 and candidate <= (self._pending_health_outlier + tolerance):
+            self._pending_health_outlier = min(self._pending_health_outlier, float(candidate))
+            self._pending_health_outlier_streak += 1
+        else:
+            self._pending_health_outlier = float(candidate)
+            self._pending_health_outlier_streak = 1
+            self._pending_health_outlier_direction = direction
+
+        if self._pending_health_outlier_streak < confirm_frames:
+            return None
+
+        confirmed = float(self._pending_health_outlier)
+        self._clear_health_outlier_state()
+        return confirmed
 
 
 def _find_true_spans(col_mask: np.ndarray) -> list[tuple[int, int]]:
