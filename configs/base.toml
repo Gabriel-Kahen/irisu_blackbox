@@ -1,37 +1,33 @@
-# Default config targets mock backend so pipeline can be validated without the real game.
-# Set env.backend = "windows" for live play.
-
 window_titles = []
 
 [env]
-backend = "mock"
+backend = "windows"
 obs_width = 96
 obs_height = 96
 frame_stack = 4
-game_over_on_health_missing = false
+game_over_on_health_missing = true
 health_missing_patience = 3
 game_over_template = ""
 game_over_threshold = 0.92
 
 [env.window]
-title_regex = "Irisu"
+title_regex = "Irisu syndrome"
 window_index = 0
-focus_before_step = false
+focus_before_step = true
 
-# Optional fixed capture region (screen coordinates). If omitted, window bounds are used.
-# [env.window.capture_region]
-# left = 100
-# top = 100
-# width = 640
-# height = 480
+[env.window.capture_region]
+left = 630
+top = 285
+width = 650
+height = 480
 
 [env.action_grid]
 rows = 8
 cols = 8
-left = 0
-top = 0
-right = 640
-bottom = 480
+left = 630
+top = 255
+right = 1280
+bottom = 768
 
 [env.reward]
 survival_reward = 0.01
@@ -50,51 +46,42 @@ click_hold_s = 0.01
 max_clicks_per_second = 3.0
 inter_step_sleep_s = 0.0
 
-# Macro executed on env.reset() for live game flow.
-# [[env.reset_macro]]
-# kind = "key"
-# key = "r"
-# duration_s = 0.2
-#
-# [[env.reset_macro]]
-# kind = "click"
-# x = 420
-# y = 260
-# button = "left"
-# relative_to_capture = true
-# duration_s = 0.04
-#
-# [[env.reset_macro]]
-# kind = "sleep"
-# duration_s = 0.8
+[[env.reset_macro]]
+kind = "click"
+x = 414
+y = 276
+button = "left"
+relative_to_capture = true
+duration_s = 0.04
+
+[[env.reset_macro]]
+kind = "sleep"
+duration_s = 0.8
 
 [env.score_ocr]
 enabled = false
 tesseract_cmd = ""
 
-# Optional score OCR region (frame coordinates, relative to captured frame).
-# [env.score_ocr.region]
-# left = 30
-# top = 30
-# width = 170
-# height = 40
+[env.score_ocr.region]
+left = 255
+top = 442
+width = 140
+height = 60
 
 [env.health_bar]
-enabled = false
+enabled = true
 column_fill_threshold = 0.08
 min_visible_pixels = 200
-invert_percent = false
 hsv_lower_1 = [0, 70, 40]
 hsv_upper_1 = [12, 255, 255]
 hsv_lower_2 = [170, 70, 40]
 hsv_upper_2 = [179, 255, 255]
 
-# Health bar region in frame coordinates (relative to captured frame).
-# [env.health_bar.region]
-# left = 190
-# top = 450
-# width = 430
-# height = 30
+[env.health_bar.region]
+left = 130
+top = 430
+width = 390
+height = 26
 
 [train]
 n_envs = 1
