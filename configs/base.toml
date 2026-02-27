@@ -67,8 +67,8 @@ duration_s = 0.4
 
 [[env.reset_macro]]
 kind = "click"
-x = 414
-y = 276
+x = 403
+y = 261
 button = "left"
 relative_to_capture = true
 duration_s = 0.04
