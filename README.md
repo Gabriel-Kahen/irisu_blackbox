@@ -48,6 +48,9 @@ Optional OCR score reward:
 pip install -e '.[ocr]'
 ```
 
+Template score reading (no OCR dependency) can be used instead by placing
+digit templates in `assets/score_templates/` as `0.png` ... `9.png`.
+
 ## Quick Start (Mock Backend)
 
 Default config uses `env.backend = "mock"` so you can validate the full PPO pipeline immediately:
@@ -87,6 +90,9 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - set `env.score_ocr.monotonic_non_decreasing = true` to prevent score drop jitter
 - raise `env.score_ocr.min_confidence` to ignore weak OCR reads
 - set `env.score_ocr.max_step_increase` to reject one-frame score spikes
+- set `env.score_ocr.method = "template"` to use digit-template matching
+- set `env.score_ocr.template_dir = "assets/score_templates"` and add `0..9` image files
+- keep `env.score_ocr.template_fallback_to_tesseract = true` while tuning templates
 
 5. Use calibration preview to verify grid alignment:
 

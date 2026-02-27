@@ -53,7 +53,11 @@ class HUDReader:
         reading = extract_score_reading(
             frame_bgr=frame_bgr,
             region=self.score_cfg.region,
+            method=self.score_cfg.method,
             tesseract_cmd=self.score_cfg.tesseract_cmd,
+            template_dir=self.score_cfg.template_dir,
+            template_min_similarity=self.score_cfg.template_min_similarity,
+            template_fallback_to_tesseract=self.score_cfg.template_fallback_to_tesseract,
         )
         if reading is None:
             return None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import re
 
 import cv2
@@ -15,6 +16,10 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 _DIGITS_RE = re.compile(r"\d+")
+_TEMPLATE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
+_TEMPLATE_CANVAS_SIZE = (36, 24)  # h, w
+_TEMPLATE_MARGIN = 2
+_TEMPLATE_CACHE: dict[str, dict[int, np.ndarray]] = {}
 
 
 @dataclass(slots=True)
@@ -22,6 +27,239 @@ class ScoreOCRReading:
     score: int
     confidence: float
     digit_len: int
+
+
+def _find_true_spans(mask_1d: np.ndarray) -> list[tuple[int, int]]:
+    if mask_1d.size == 0:
+        return []
+    padded = np.concatenate(([0], mask_1d.astype(np.int8), [0]))
+    diff = np.diff(padded)
+    starts = np.flatnonzero(diff == 1)
+    ends = np.flatnonzero(diff == -1) - 1
+    return [(int(start), int(end)) for start, end in zip(starts, ends)]
+
+
+def _build_digit_mask(image: np.ndarray) -> np.ndarray:
+    if image.ndim == 2:
+        gray = image
+        hsv = None
+    else:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if np.count_nonzero(otsu) > (0.6 * otsu.size):
+        otsu = cv2.bitwise_not(otsu)
+
+    if hsv is None:
+        mask = otsu
+    else:
+        # Score glyphs are warm/yellow with a dark outline. Prefer warm mask when possible.
+        warm_mask = cv2.inRange(
+            hsv,
+            np.array([8, 25, 45], dtype=np.uint8),
+            np.array([55, 255, 255], dtype=np.uint8),
+        )
+        if np.count_nonzero(warm_mask) >= max(10, int(0.01 * warm_mask.size)):
+            mask = warm_mask
+        else:
+            mask = otsu
+
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((2, 2), dtype=np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), dtype=np.uint8))
+    return mask
+
+
+def _normalize_digit_mask(mask: np.ndarray) -> np.ndarray:
+    canvas_h, canvas_w = _TEMPLATE_CANVAS_SIZE
+    canvas = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
+
+    points = cv2.findNonZero(mask)
+    if points is None:
+        return canvas
+
+    x, y, w, h = cv2.boundingRect(points)
+    tight = mask[y : y + h, x : x + w]
+    if tight.size == 0:
+        return canvas
+
+    max_w = max(1, canvas_w - (2 * _TEMPLATE_MARGIN))
+    max_h = max(1, canvas_h - (2 * _TEMPLATE_MARGIN))
+    scale = min(max_w / max(1, w), max_h / max(1, h))
+    out_w = max(1, int(round(w * scale)))
+    out_h = max(1, int(round(h * scale)))
+
+    resized = cv2.resize(tight, (out_w, out_h), interpolation=cv2.INTER_NEAREST)
+    ox = (canvas_w - out_w) // 2
+    oy = (canvas_h - out_h) // 2
+    canvas[oy : oy + out_h, ox : ox + out_w] = resized
+    return canvas
+
+
+def _segment_digit_masks(crop_bgr: np.ndarray) -> list[np.ndarray]:
+    mask = _build_digit_mask(crop_bgr)
+    if mask.size == 0:
+        return []
+
+    h, w = mask.shape[:2]
+    col_counts = np.count_nonzero(mask, axis=0)
+    min_col_pixels = max(2, int(h * 0.25))
+    col_on = (col_counts >= min_col_pixels).astype(np.uint8)
+
+    if col_on.size > 4:
+        closed = cv2.morphologyEx(
+            (col_on[None, :] * 255),
+            cv2.MORPH_CLOSE,
+            np.ones((1, 3), dtype=np.uint8),
+        )
+        col_on = (closed[0] > 0).astype(np.uint8)
+
+    spans = _find_true_spans(col_on)
+    if not spans:
+        return []
+
+    min_span = max(2, int(w * 0.02))
+    max_span = max(8, int(w * 0.28))
+    digit_masks: list[np.ndarray] = []
+
+    for start, end in spans:
+        span_w = end - start + 1
+        if span_w < min_span or span_w > max_span:
+            continue
+
+        slab = mask[:, start : end + 1]
+        row_counts = np.count_nonzero(slab, axis=1)
+        on_rows = np.flatnonzero(row_counts > 0)
+        if on_rows.size == 0:
+            continue
+
+        top = int(on_rows[0])
+        bottom = int(on_rows[-1]) + 1
+        if (bottom - top) < max(4, int(h * 0.3)):
+            continue
+
+        digit_masks.append(slab[top:bottom, :])
+
+    # The game score is fixed-width in practice; keep the right-most plausible run.
+    if len(digit_masks) > 8:
+        digit_masks = digit_masks[-8:]
+    return digit_masks
+
+
+def _find_template_file(template_dir: Path, digit: int) -> Path | None:
+    for suffix in _TEMPLATE_SUFFIXES:
+        candidate = template_dir / f"{digit}{suffix}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _load_digit_templates(template_dir: str | None) -> dict[int, np.ndarray]:
+    if not template_dir:
+        return {}
+
+    base = Path(template_dir).expanduser()
+    try:
+        base = base.resolve()
+    except Exception:
+        pass
+
+    key = str(base)
+    cached = _TEMPLATE_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    templates: dict[int, np.ndarray] = {}
+    if not base.exists() or not base.is_dir():
+        _TEMPLATE_CACHE[key] = templates
+        return templates
+
+    for digit in range(10):
+        template_path = _find_template_file(base, digit)
+        if template_path is None:
+            continue
+
+        image = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+        if image is None:
+            image = cv2.imread(str(template_path), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            continue
+
+        mask = _build_digit_mask(image)
+        norm = _normalize_digit_mask(mask)
+        if np.count_nonzero(norm) == 0:
+            continue
+        templates[digit] = norm
+
+    _TEMPLATE_CACHE[key] = templates
+    return templates
+
+
+def _binary_dice_score(a: np.ndarray, b: np.ndarray) -> float:
+    a_mask = a > 0
+    b_mask = b > 0
+    a_count = int(np.count_nonzero(a_mask))
+    b_count = int(np.count_nonzero(b_mask))
+    if a_count == 0 or b_count == 0:
+        return 0.0
+
+    inter = int(np.count_nonzero(a_mask & b_mask))
+    return float((2.0 * inter) / (a_count + b_count))
+
+
+def _extract_score_with_templates(
+    frame_bgr: np.ndarray,
+    region: Rect,
+    *,
+    template_dir: str | None,
+    min_similarity: float,
+) -> ScoreOCRReading | None:
+    templates = _load_digit_templates(template_dir)
+    if len(templates) < 10:
+        return None
+
+    crop = frame_bgr[region.top : region.bottom, region.left : region.right]
+    if crop.size == 0:
+        return None
+
+    digit_masks = _segment_digit_masks(crop)
+    if not digit_masks:
+        return None
+
+    digits: list[str] = []
+    sims: list[float] = []
+
+    for raw_digit in digit_masks:
+        norm_digit = _normalize_digit_mask(raw_digit)
+        best_digit: int | None = None
+        best_sim = -1.0
+
+        for digit, template in templates.items():
+            sim = _binary_dice_score(norm_digit, template)
+            if sim > best_sim:
+                best_sim = sim
+                best_digit = digit
+
+        if best_digit is None:
+            return None
+
+        digits.append(str(best_digit))
+        sims.append(best_sim)
+
+    if not digits:
+        return None
+
+    if min_similarity > 0 and any(sim < min_similarity for sim in sims):
+        return None
+
+    text = "".join(digits)
+    if not text.isdigit():
+        return None
+
+    score = int(text)
+    confidence = float(np.mean(sims) * 100.0)
+    return ScoreOCRReading(score=score, confidence=confidence, digit_len=len(text))
 
 
 def _ocr_digits_candidate(
@@ -118,10 +356,11 @@ def _build_score_variants(crop_bgr: np.ndarray) -> list[np.ndarray]:
     ]
 
 
-def extract_score_reading(
+def _extract_score_with_tesseract(
     frame_bgr: np.ndarray,
     region: Rect,
-    tesseract_cmd: str | None = None,
+    *,
+    tesseract_cmd: str | None,
 ) -> ScoreOCRReading | None:
     if pytesseract is None:
         return None
@@ -162,11 +401,55 @@ def extract_score_reading(
     return ScoreOCRReading(score=best_score, confidence=best_conf, digit_len=best_len)
 
 
-def extract_score(frame_bgr: np.ndarray, region: Rect, tesseract_cmd: str | None = None) -> int | None:
-    reading = extract_score_reading(
+def extract_score_reading(
+    frame_bgr: np.ndarray,
+    region: Rect,
+    *,
+    method: str = "tesseract",
+    tesseract_cmd: str | None = None,
+    template_dir: str | None = None,
+    template_min_similarity: float = 0.32,
+    template_fallback_to_tesseract: bool = True,
+) -> ScoreOCRReading | None:
+    method_key = method.strip().lower()
+
+    if method_key in {"template", "auto"}:
+        template_reading = _extract_score_with_templates(
+            frame_bgr=frame_bgr,
+            region=region,
+            template_dir=template_dir,
+            min_similarity=max(0.0, float(template_min_similarity)),
+        )
+        if template_reading is not None:
+            return template_reading
+        if method_key == "template" and not template_fallback_to_tesseract:
+            return None
+
+    return _extract_score_with_tesseract(
         frame_bgr=frame_bgr,
         region=region,
         tesseract_cmd=tesseract_cmd,
+    )
+
+
+def extract_score(
+    frame_bgr: np.ndarray,
+    region: Rect,
+    tesseract_cmd: str | None = None,
+    *,
+    method: str = "tesseract",
+    template_dir: str | None = None,
+    template_min_similarity: float = 0.32,
+    template_fallback_to_tesseract: bool = True,
+) -> int | None:
+    reading = extract_score_reading(
+        frame_bgr=frame_bgr,
+        region=region,
+        method=method,
+        tesseract_cmd=tesseract_cmd,
+        template_dir=template_dir,
+        template_min_similarity=template_min_similarity,
+        template_fallback_to_tesseract=template_fallback_to_tesseract,
     )
     if reading is None:
         return None

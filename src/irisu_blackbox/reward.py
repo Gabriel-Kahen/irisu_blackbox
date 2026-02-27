@@ -56,6 +56,10 @@ class RewardShaper:
             frame_bgr=raw_frame_bgr,
             region=self.score_cfg.region,
             tesseract_cmd=self.score_cfg.tesseract_cmd,
+            method=self.score_cfg.method,
+            template_dir=self.score_cfg.template_dir,
+            template_min_similarity=self.score_cfg.template_min_similarity,
+            template_fallback_to_tesseract=self.score_cfg.template_fallback_to_tesseract,
         )
 
     def step(

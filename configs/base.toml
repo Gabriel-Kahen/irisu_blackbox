@@ -60,7 +60,11 @@ duration_s = 0.8
 
 [env.score_ocr]
 enabled = true
+method = "template"
 tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+template_dir = "assets/score_templates"
+template_min_similarity = 0.32
+template_fallback_to_tesseract = true
 monotonic_non_decreasing = true
 hold_last_value_when_missing = true
 min_confidence = 40.0

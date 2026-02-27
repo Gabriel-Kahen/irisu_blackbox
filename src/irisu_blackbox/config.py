@@ -77,7 +77,11 @@ class ActionGridConfig:
 class ScoreOCRConfig:
     enabled: bool = False
     region: Rect | None = None
+    method: str = "tesseract"
     tesseract_cmd: str | None = None
+    template_dir: str | None = None
+    template_min_similarity: float = 0.32
+    template_fallback_to_tesseract: bool = True
     monotonic_non_decreasing: bool = True
     hold_last_value_when_missing: bool = True
     min_confidence: float = 40.0
@@ -92,7 +96,18 @@ class ScoreOCRConfig:
         return cls(
             enabled=bool(data.get("enabled", cls.enabled)),
             region=region,
+            method=str(data.get("method", cls.method)),
             tesseract_cmd=data.get("tesseract_cmd"),
+            template_dir=data.get("template_dir"),
+            template_min_similarity=float(
+                data.get("template_min_similarity", cls.template_min_similarity)
+            ),
+            template_fallback_to_tesseract=bool(
+                data.get(
+                    "template_fallback_to_tesseract",
+                    cls.template_fallback_to_tesseract,
+                )
+            ),
             monotonic_non_decreasing=bool(
                 data.get("monotonic_non_decreasing", cls.monotonic_non_decreasing)
             ),
