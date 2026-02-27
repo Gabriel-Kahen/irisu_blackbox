@@ -62,10 +62,18 @@ class HUDReader:
             template_dir=self.score_cfg.template_dir,
             template_min_similarity=self.score_cfg.template_min_similarity,
             template_fallback_to_tesseract=self.score_cfg.template_fallback_to_tesseract,
+            template_expected_digits=self.score_cfg.template_expected_digits,
+            template_inner_left=self.score_cfg.template_inner_left,
+            template_inner_right=self.score_cfg.template_inner_right,
         )
         if reading is None:
             return None
-        if reading.confidence >= 0 and reading.confidence < self.score_cfg.min_confidence:
+        # Template mode already gates with similarity; keep min_confidence for OCR-like paths.
+        if (
+            reading.source != "template"
+            and reading.confidence >= 0
+            and reading.confidence < self.score_cfg.min_confidence
+        ):
             return None
         return reading.score
 

@@ -82,6 +82,9 @@ class ScoreOCRConfig:
     template_dir: str | None = None
     template_min_similarity: float = 0.32
     template_fallback_to_tesseract: bool = True
+    template_expected_digits: int = 8
+    template_inner_left: int = 0
+    template_inner_right: int = 0
     monotonic_non_decreasing: bool = True
     hold_last_value_when_missing: bool = True
     min_confidence: float = 40.0
@@ -108,6 +111,11 @@ class ScoreOCRConfig:
                     cls.template_fallback_to_tesseract,
                 )
             ),
+            template_expected_digits=int(
+                data.get("template_expected_digits", cls.template_expected_digits)
+            ),
+            template_inner_left=int(data.get("template_inner_left", cls.template_inner_left)),
+            template_inner_right=int(data.get("template_inner_right", cls.template_inner_right)),
             monotonic_non_decreasing=bool(
                 data.get("monotonic_non_decreasing", cls.monotonic_non_decreasing)
             ),

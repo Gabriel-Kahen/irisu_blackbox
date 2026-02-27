@@ -8,37 +8,42 @@ from irisu_blackbox.score_ocr import extract_score_reading
 
 
 def _draw_score_text(text: str) -> np.ndarray:
-    char_w = 26
+    slot_w = 26
     h = 34
-    w = (len(text) * char_w) + 8
+    w = (len(text) * slot_w) + 8
 
     image = np.zeros((h, w, 3), dtype=np.uint8)
     image[:] = (25, 15, 70)  # dark red-ish background
 
-    x = 4
     baseline = 26
-    for ch in text:
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.85
+    thickness_outer = 5
+    thickness_inner = 2
+
+    for i, ch in enumerate(text):
+        text_size = cv2.getTextSize(ch, font, font_scale, thickness_inner)[0]
+        x = 4 + (i * slot_w) + ((slot_w - text_size[0]) // 2)
         cv2.putText(
             image,
             ch,
             (x, baseline),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.85,
+            font,
+            font_scale,
             (40, 10, 100),
-            5,
+            thickness_outer,
             cv2.LINE_AA,
         )
         cv2.putText(
             image,
             ch,
             (x, baseline),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.85,
+            font,
+            font_scale,
             (120, 230, 245),
-            2,
+            thickness_inner,
             cv2.LINE_AA,
         )
-        x += char_w
 
     return image
 

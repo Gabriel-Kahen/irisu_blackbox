@@ -27,6 +27,7 @@ class ScoreOCRReading:
     score: int
     confidence: float
     digit_len: int
+    source: str = "unknown"
 
 
 def _find_true_spans(mask_1d: np.ndarray) -> list[tuple[int, int]]:
@@ -208,12 +209,103 @@ def _binary_dice_score(a: np.ndarray, b: np.ndarray) -> float:
     return float((2.0 * inter) / (a_count + b_count))
 
 
+def _classify_digit_mask(
+    digit_mask: np.ndarray,
+    templates: dict[int, np.ndarray],
+) -> tuple[int | None, float, float]:
+    best_digit: int | None = None
+    best_sim = -1.0
+    second_sim = -1.0
+
+    for digit, template in templates.items():
+        sim = _binary_dice_score(digit_mask, template)
+        if sim > best_sim:
+            second_sim = best_sim
+            best_sim = sim
+            best_digit = digit
+        elif sim > second_sim:
+            second_sim = sim
+
+    margin = best_sim - max(0.0, second_sim)
+    return best_digit, best_sim, margin
+
+
+def _extract_score_with_template_slots(
+    crop_bgr: np.ndarray,
+    templates: dict[int, np.ndarray],
+    *,
+    expected_digits: int,
+    min_similarity: float,
+    inner_left: int,
+    inner_right: int,
+) -> ScoreOCRReading | None:
+    if crop_bgr.size == 0:
+        return None
+
+    h, w = crop_bgr.shape[:2]
+    left = max(0, int(inner_left))
+    right = max(0, int(inner_right))
+    x0 = min(w - 1, left) if w > 1 else 0
+    x1 = max(x0 + 1, w - right)
+    effective = crop_bgr[:, x0:x1]
+    if effective.size == 0:
+        return None
+
+    slot_count = max(1, int(expected_digits))
+    ew = effective.shape[1]
+    edges = np.linspace(0, ew, slot_count + 1, dtype=np.int32)
+
+    digits: list[str] = []
+    sims: list[float] = []
+    margins: list[float] = []
+
+    for i in range(slot_count):
+        sx0 = int(edges[i])
+        sx1 = int(edges[i + 1])
+        if sx1 <= sx0:
+            return None
+
+        slot = effective[:, sx0:sx1]
+        if slot.size == 0:
+            return None
+
+        mask = _build_digit_mask(slot)
+        norm = _normalize_digit_mask(mask)
+        if np.count_nonzero(norm) == 0:
+            return None
+
+        best_digit, best_sim, margin = _classify_digit_mask(norm, templates)
+        if best_digit is None:
+            return None
+        if min_similarity > 0 and best_sim < min_similarity:
+            return None
+
+        digits.append(str(best_digit))
+        sims.append(best_sim)
+        margins.append(max(0.0, margin))
+
+    if not digits:
+        return None
+
+    text = "".join(digits)
+    if not text.isdigit():
+        return None
+
+    mean_sim = float(np.mean(sims))
+    mean_margin = float(np.mean(margins))
+    confidence = float(np.clip((0.7 * mean_sim + 0.3 * min(1.0, mean_margin * 4.0)) * 100.0, 0.0, 100.0))
+    return ScoreOCRReading(score=int(text), confidence=confidence, digit_len=len(text), source="template")
+
+
 def _extract_score_with_templates(
     frame_bgr: np.ndarray,
     region: Rect,
     *,
     template_dir: str | None,
     min_similarity: float,
+    expected_digits: int,
+    inner_left: int,
+    inner_right: int,
 ) -> ScoreOCRReading | None:
     templates = _load_digit_templates(template_dir)
     if len(templates) < 10:
@@ -223,6 +315,18 @@ def _extract_score_with_templates(
     if crop.size == 0:
         return None
 
+    slot_reading = _extract_score_with_template_slots(
+        crop,
+        templates,
+        expected_digits=expected_digits,
+        min_similarity=min_similarity,
+        inner_left=inner_left,
+        inner_right=inner_right,
+    )
+    if slot_reading is not None:
+        return slot_reading
+
+    # Backup path: contour segmentation in case slot alignment is off.
     digit_masks = _segment_digit_masks(crop)
     if not digit_masks:
         return None
@@ -259,7 +363,7 @@ def _extract_score_with_templates(
 
     score = int(text)
     confidence = float(np.mean(sims) * 100.0)
-    return ScoreOCRReading(score=score, confidence=confidence, digit_len=len(text))
+    return ScoreOCRReading(score=score, confidence=confidence, digit_len=len(text), source="template")
 
 
 def _ocr_digits_candidate(
@@ -398,7 +502,12 @@ def _extract_score_with_tesseract(
 
     if best_score is None:
         return None
-    return ScoreOCRReading(score=best_score, confidence=best_conf, digit_len=best_len)
+    return ScoreOCRReading(
+        score=best_score,
+        confidence=best_conf,
+        digit_len=best_len,
+        source="tesseract",
+    )
 
 
 def extract_score_reading(
@@ -410,6 +519,9 @@ def extract_score_reading(
     template_dir: str | None = None,
     template_min_similarity: float = 0.32,
     template_fallback_to_tesseract: bool = True,
+    template_expected_digits: int = 8,
+    template_inner_left: int = 0,
+    template_inner_right: int = 0,
 ) -> ScoreOCRReading | None:
     method_key = method.strip().lower()
 
@@ -419,6 +531,9 @@ def extract_score_reading(
             region=region,
             template_dir=template_dir,
             min_similarity=max(0.0, float(template_min_similarity)),
+            expected_digits=max(1, int(template_expected_digits)),
+            inner_left=max(0, int(template_inner_left)),
+            inner_right=max(0, int(template_inner_right)),
         )
         if template_reading is not None:
             return template_reading
@@ -441,6 +556,9 @@ def extract_score(
     template_dir: str | None = None,
     template_min_similarity: float = 0.32,
     template_fallback_to_tesseract: bool = True,
+    template_expected_digits: int = 8,
+    template_inner_left: int = 0,
+    template_inner_right: int = 0,
 ) -> int | None:
     reading = extract_score_reading(
         frame_bgr=frame_bgr,
@@ -450,6 +568,9 @@ def extract_score(
         template_dir=template_dir,
         template_min_similarity=template_min_similarity,
         template_fallback_to_tesseract=template_fallback_to_tesseract,
+        template_expected_digits=template_expected_digits,
+        template_inner_left=template_inner_left,
+        template_inner_right=template_inner_right,
     )
     if reading is None:
         return None

@@ -92,7 +92,9 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - set `env.score_ocr.max_step_increase` to reject one-frame score spikes
 - set `env.score_ocr.method = "template"` to use digit-template matching
 - set `env.score_ocr.template_dir = "assets/score_templates"` and add `0..9` image files
-- keep `env.score_ocr.template_fallback_to_tesseract = true` while tuning templates
+- set `env.score_ocr.template_expected_digits = 8` for the fixed 8-slot Irisu score
+- tune `env.score_ocr.template_inner_left/right` if the score region has extra side padding
+- set `env.score_ocr.template_fallback_to_tesseract = false` for deterministic template-only reads
 
 5. Use calibration preview to verify grid alignment:
 

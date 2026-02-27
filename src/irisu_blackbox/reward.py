@@ -60,6 +60,9 @@ class RewardShaper:
             template_dir=self.score_cfg.template_dir,
             template_min_similarity=self.score_cfg.template_min_similarity,
             template_fallback_to_tesseract=self.score_cfg.template_fallback_to_tesseract,
+            template_expected_digits=self.score_cfg.template_expected_digits,
+            template_inner_left=self.score_cfg.template_inner_left,
+            template_inner_right=self.score_cfg.template_inner_right,
         )
 
     def step(
