@@ -99,11 +99,10 @@ def main() -> None:
             )
 
             if args.auto_reset and cfg.env.health_bar.enabled and missing_streak >= patience:
-                env.backend.reset()
-                env.hud_reader.reset()
+                env._pending_post_game_over_delay = True
+                env.reset()
                 missing_streak = 0
-                print("\n[reset] health bar missing -> ran reset macro")
-                time.sleep(0.6)
+                print("\n[reset] health bar missing -> ran reset flow")
 
             time.sleep(max(0.01, args.interval_s))
     except KeyboardInterrupt:

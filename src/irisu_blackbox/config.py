@@ -334,6 +334,7 @@ class EnvConfig:
     health_missing_patience: int = 3
     game_over_template: str | None = None
     game_over_threshold: float = 0.9
+    post_game_over_delay_s: float = 1.0
     reset_ready_template: str | None = None
     reset_ready_threshold: float = 0.92
     reset_ready_timeout_s: float = 6.0
@@ -367,6 +368,9 @@ class EnvConfig:
             ),
             game_over_template=data.get("game_over_template"),
             game_over_threshold=float(data.get("game_over_threshold", defaults.game_over_threshold)),
+            post_game_over_delay_s=float(
+                data.get("post_game_over_delay_s", defaults.post_game_over_delay_s)
+            ),
             reset_ready_template=data.get("reset_ready_template"),
             reset_ready_threshold=float(
                 data.get("reset_ready_threshold", defaults.reset_ready_threshold)

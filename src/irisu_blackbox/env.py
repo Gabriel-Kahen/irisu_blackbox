@@ -47,11 +47,13 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
         self._last_frame_bgr: np.ndarray | None = None
         self._health_missing_streak = 0
         self._last_click_time = 0.0
+        self._pending_post_game_over_delay = False
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
         _ = options
 
+        self._run_post_game_over_delay_if_needed()
         self._wait_for_reset_ready()
         self.backend.reset()
         self.hud_reader.reset()
@@ -67,6 +69,14 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
 
         info = {"step": self._step_count, "hud": hud.as_dict()}
         return obs, info
+
+    def _run_post_game_over_delay_if_needed(self) -> None:
+        if not self._pending_post_game_over_delay:
+            return
+        delay_s = max(0.0, float(self.cfg.post_game_over_delay_s))
+        self._pending_post_game_over_delay = False
+        if delay_s > 0:
+            time.sleep(delay_s)
 
     def _wait_for_reset_ready(self) -> None:
         if self.cfg.reset_ready_template is None:
@@ -150,6 +160,8 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
 
         terminated = backend_done or template_done or health_done
         truncated = self._step_count >= self.cfg.episode.max_steps
+        if terminated:
+            self._pending_post_game_over_delay = True
 
         self._last_frame_bgr = raw
         info = {

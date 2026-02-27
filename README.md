@@ -82,6 +82,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - `env.health_bar`: health bar detection settings (`method = "profile"` or `"scanline"`)
 - `env.game_over_on_health_missing = true` to terminate when bar disappears
 - `env.game_over_template` can match the death-overlay screen directly
+- `env.post_game_over_delay_s` can pause briefly after death is detected before reset logic starts
 - `env.reset_ready_template` can match the menu screen before pressing `Start`
 - `env.round_start_timeout_s` lets `reset()` wait until the HUD comes back after clicking `Start`
 - set `env.episode.max_clicks_per_second = 3.0` to cap click rate

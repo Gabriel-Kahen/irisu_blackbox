@@ -130,3 +130,31 @@ def test_env_reset_waits_for_menu_then_round_start(tmp_path: Path):
         assert info["hud"]["health_visible"] is True
     finally:
         env.close()
+
+
+def test_env_reset_applies_post_game_over_delay(monkeypatch):
+    cfg = EnvConfig(
+        backend="mock",
+        obs_width=64,
+        obs_height=64,
+        frame_stack=2,
+        action_grid=ActionGridConfig(rows=4, cols=4, left=0, top=0, right=64, bottom=64),
+        episode=EpisodeConfig(max_steps=10, action_repeat=1),
+        post_game_over_delay_s=1.0,
+    )
+
+    backend = MockGameBackend(MockBackendConfig(width=64, height=64, seed=0))
+    env = IrisuBlackBoxEnv(cfg=cfg, backend=backend)
+    sleeps: list[float] = []
+
+    def _fake_sleep(value: float) -> None:
+        sleeps.append(value)
+
+    monkeypatch.setattr("irisu_blackbox.env.time.sleep", _fake_sleep)
+
+    try:
+        env._pending_post_game_over_delay = True
+        env.reset()
+        assert 1.0 in sleeps
+    finally:
+        env.close()
