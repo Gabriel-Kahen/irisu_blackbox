@@ -74,10 +74,16 @@ class HUDReader:
         col_fill = (mask.astype(np.float32) / 255.0).mean(axis=0)
         filled_cols = np.flatnonzero(col_fill >= self.health_cfg.column_fill_threshold)
         if filled_cols.size == 0:
-            return 0.0, True
+            percent = 0.0
+            if self.health_cfg.invert_percent:
+                percent = 1.0 - percent
+            return percent, True
 
         percent = float((filled_cols.max() + 1) / mask.shape[1])
         percent = max(0.0, min(1.0, percent))
+        if self.health_cfg.invert_percent:
+            percent = 1.0 - percent
+            percent = max(0.0, min(1.0, percent))
         return percent, True
 
     def read(self, frame_bgr: np.ndarray) -> HUDState:

@@ -113,6 +113,7 @@ class HealthBarConfig:
     hsv_upper_2: tuple[int, int, int] = (179, 255, 255)
     column_fill_threshold: float = 0.08
     min_visible_pixels: int = 200
+    invert_percent: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "HealthBarConfig":
@@ -131,6 +132,7 @@ class HealthBarConfig:
                 data.get("column_fill_threshold", cls.column_fill_threshold)
             ),
             min_visible_pixels=int(data.get("min_visible_pixels", cls.min_visible_pixels)),
+            invert_percent=bool(data.get("invert_percent", cls.invert_percent)),
         )
 
 
