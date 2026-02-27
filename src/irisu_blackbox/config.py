@@ -63,13 +63,14 @@ class ActionGridConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ActionGridConfig":
+        defaults = cls()
         return cls(
-            rows=int(data.get("rows", cls.rows)),
-            cols=int(data.get("cols", cls.cols)),
-            left=int(data.get("left", cls.left)),
-            top=int(data.get("top", cls.top)),
-            right=int(data.get("right", cls.right)),
-            bottom=int(data.get("bottom", cls.bottom)),
+            rows=int(data.get("rows", defaults.rows)),
+            cols=int(data.get("cols", defaults.cols)),
+            left=int(data.get("left", defaults.left)),
+            top=int(data.get("top", defaults.top)),
+            right=int(data.get("right", defaults.right)),
+            bottom=int(data.get("bottom", defaults.bottom)),
         )
 
 
@@ -94,36 +95,37 @@ class ScoreOCRConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "ScoreOCRConfig":
         if not data:
             return cls()
+        defaults = cls()
         region_raw = data.get("region")
         region = Rect.from_dict(region_raw) if region_raw else None
         return cls(
-            enabled=bool(data.get("enabled", cls.enabled)),
+            enabled=bool(data.get("enabled", defaults.enabled)),
             region=region,
-            method=str(data.get("method", cls.method)),
+            method=str(data.get("method", defaults.method)),
             tesseract_cmd=data.get("tesseract_cmd"),
             template_dir=data.get("template_dir"),
             template_min_similarity=float(
-                data.get("template_min_similarity", cls.template_min_similarity)
+                data.get("template_min_similarity", defaults.template_min_similarity)
             ),
             template_fallback_to_tesseract=bool(
                 data.get(
                     "template_fallback_to_tesseract",
-                    cls.template_fallback_to_tesseract,
+                    defaults.template_fallback_to_tesseract,
                 )
             ),
             template_expected_digits=int(
-                data.get("template_expected_digits", cls.template_expected_digits)
+                data.get("template_expected_digits", defaults.template_expected_digits)
             ),
-            template_inner_left=int(data.get("template_inner_left", cls.template_inner_left)),
-            template_inner_right=int(data.get("template_inner_right", cls.template_inner_right)),
+            template_inner_left=int(data.get("template_inner_left", defaults.template_inner_left)),
+            template_inner_right=int(data.get("template_inner_right", defaults.template_inner_right)),
             monotonic_non_decreasing=bool(
-                data.get("monotonic_non_decreasing", cls.monotonic_non_decreasing)
+                data.get("monotonic_non_decreasing", defaults.monotonic_non_decreasing)
             ),
             hold_last_value_when_missing=bool(
-                data.get("hold_last_value_when_missing", cls.hold_last_value_when_missing)
+                data.get("hold_last_value_when_missing", defaults.hold_last_value_when_missing)
             ),
-            min_confidence=float(data.get("min_confidence", cls.min_confidence)),
-            max_step_increase=int(data.get("max_step_increase", cls.max_step_increase)),
+            min_confidence=float(data.get("min_confidence", defaults.min_confidence)),
+            max_step_increase=int(data.get("max_step_increase", defaults.max_step_increase)),
         )
 
 
@@ -163,12 +165,13 @@ class HealthBarConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "HealthBarConfig":
         if not data:
             return cls()
+        defaults = cls()
         region_raw = data.get("region")
         region = Rect.from_dict(region_raw) if region_raw else None
         return cls(
-            enabled=bool(data.get("enabled", cls.enabled)),
+            enabled=bool(data.get("enabled", defaults.enabled)),
             region=region,
-            method=str(data.get("method", cls.method)),
+            method=str(data.get("method", defaults.method)),
             scanline_start_x=(
                 int(data["scanline_start_x"]) if data.get("scanline_start_x") is not None else None
             ),
@@ -177,25 +180,25 @@ class HealthBarConfig:
             ),
             scanline_y=int(data["scanline_y"]) if data.get("scanline_y") is not None else None,
             scanline_half_height=int(
-                data.get("scanline_half_height", cls.scanline_half_height)
+                data.get("scanline_half_height", defaults.scanline_half_height)
             ),
             scanline_contrast_threshold=float(
-                data.get("scanline_contrast_threshold", cls.scanline_contrast_threshold)
+                data.get("scanline_contrast_threshold", defaults.scanline_contrast_threshold)
             ),
-            hsv_lower_1=_parse_hsv_triplet(data.get("hsv_lower_1"), cls.hsv_lower_1),
-            hsv_upper_1=_parse_hsv_triplet(data.get("hsv_upper_1"), cls.hsv_upper_1),
-            hsv_lower_2=_parse_hsv_triplet(data.get("hsv_lower_2"), cls.hsv_lower_2),
-            hsv_upper_2=_parse_hsv_triplet(data.get("hsv_upper_2"), cls.hsv_upper_2),
+            hsv_lower_1=_parse_hsv_triplet(data.get("hsv_lower_1"), defaults.hsv_lower_1),
+            hsv_upper_1=_parse_hsv_triplet(data.get("hsv_upper_1"), defaults.hsv_upper_1),
+            hsv_lower_2=_parse_hsv_triplet(data.get("hsv_lower_2"), defaults.hsv_lower_2),
+            hsv_upper_2=_parse_hsv_triplet(data.get("hsv_upper_2"), defaults.hsv_upper_2),
             column_fill_threshold=float(
-                data.get("column_fill_threshold", cls.column_fill_threshold)
+                data.get("column_fill_threshold", defaults.column_fill_threshold)
             ),
             adaptive_fill_peak_ratio=float(
-                data.get("adaptive_fill_peak_ratio", cls.adaptive_fill_peak_ratio)
+                data.get("adaptive_fill_peak_ratio", defaults.adaptive_fill_peak_ratio)
             ),
-            min_visible_pixels=int(data.get("min_visible_pixels", cls.min_visible_pixels)),
-            smoothing_window=int(data.get("smoothing_window", cls.smoothing_window)),
-            fill_direction=str(data.get("fill_direction", cls.fill_direction)),
-            invert_percent=bool(data.get("invert_percent", cls.invert_percent)),
+            min_visible_pixels=int(data.get("min_visible_pixels", defaults.min_visible_pixels)),
+            smoothing_window=int(data.get("smoothing_window", defaults.smoothing_window)),
+            fill_direction=str(data.get("fill_direction", defaults.fill_direction)),
+            invert_percent=bool(data.get("invert_percent", defaults.invert_percent)),
         )
 
 
@@ -214,15 +217,16 @@ class RewardConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "RewardConfig":
         if not data:
             return cls()
+        defaults = cls()
         return cls(
-            survival_reward=float(data.get("survival_reward", cls.survival_reward)),
-            activity_reward_scale=float(data.get("activity_reward_scale", cls.activity_reward_scale)),
-            cascade_threshold=float(data.get("cascade_threshold", cls.cascade_threshold)),
-            cascade_bonus=float(data.get("cascade_bonus", cls.cascade_bonus)),
-            stale_threshold=float(data.get("stale_threshold", cls.stale_threshold)),
-            stale_patience=int(data.get("stale_patience", cls.stale_patience)),
-            stale_penalty=float(data.get("stale_penalty", cls.stale_penalty)),
-            score_delta_scale=float(data.get("score_delta_scale", cls.score_delta_scale)),
+            survival_reward=float(data.get("survival_reward", defaults.survival_reward)),
+            activity_reward_scale=float(data.get("activity_reward_scale", defaults.activity_reward_scale)),
+            cascade_threshold=float(data.get("cascade_threshold", defaults.cascade_threshold)),
+            cascade_bonus=float(data.get("cascade_bonus", defaults.cascade_bonus)),
+            stale_threshold=float(data.get("stale_threshold", defaults.stale_threshold)),
+            stale_patience=int(data.get("stale_patience", defaults.stale_patience)),
+            stale_penalty=float(data.get("stale_penalty", defaults.stale_penalty)),
+            score_delta_scale=float(data.get("score_delta_scale", defaults.score_delta_scale)),
         )
 
 
@@ -238,14 +242,15 @@ class EpisodeConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "EpisodeConfig":
         if not data:
             return cls()
+        defaults = cls()
         return cls(
-            max_steps=int(data.get("max_steps", cls.max_steps)),
-            action_repeat=int(data.get("action_repeat", cls.action_repeat)),
-            click_hold_s=float(data.get("click_hold_s", cls.click_hold_s)),
+            max_steps=int(data.get("max_steps", defaults.max_steps)),
+            action_repeat=int(data.get("action_repeat", defaults.action_repeat)),
+            click_hold_s=float(data.get("click_hold_s", defaults.click_hold_s)),
             max_clicks_per_second=float(
-                data.get("max_clicks_per_second", cls.max_clicks_per_second)
+                data.get("max_clicks_per_second", defaults.max_clicks_per_second)
             ),
-            inter_step_sleep_s=float(data.get("inter_step_sleep_s", cls.inter_step_sleep_s)),
+            inter_step_sleep_s=float(data.get("inter_step_sleep_s", defaults.inter_step_sleep_s)),
         )
 
 
@@ -261,6 +266,7 @@ class ResetMacroStep:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ResetMacroStep":
+        defaults = cls(kind=str(data["kind"]))
         return cls(
             kind=str(data["kind"]),
             duration_s=float(data.get("duration_s", 0.0)),
@@ -268,7 +274,7 @@ class ResetMacroStep:
             y=int(data["y"]) if data.get("y") is not None else None,
             button=str(data.get("button", "left")),
             key=data.get("key"),
-            relative_to_capture=bool(data.get("relative_to_capture", cls.relative_to_capture)),
+            relative_to_capture=bool(data.get("relative_to_capture", defaults.relative_to_capture)),
         )
 
 
@@ -283,12 +289,13 @@ class WindowConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "WindowConfig":
         if not data:
             return cls()
+        defaults = cls()
         capture_raw = data.get("capture_region")
         return cls(
-            title_regex=str(data.get("title_regex", cls.title_regex)),
-            window_index=int(data.get("window_index", cls.window_index)),
+            title_regex=str(data.get("title_regex", defaults.title_regex)),
+            window_index=int(data.get("window_index", defaults.window_index)),
             capture_region=Rect.from_dict(capture_raw) if capture_raw else None,
-            focus_before_step=bool(data.get("focus_before_step", cls.focus_before_step)),
+            focus_before_step=bool(data.get("focus_before_step", defaults.focus_before_step)),
         )
 
 
@@ -314,12 +321,13 @@ class EnvConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "EnvConfig":
         if not data:
             return cls()
+        defaults = cls()
         reset_macro = [ResetMacroStep.from_dict(step) for step in data.get("reset_macro", [])]
         return cls(
-            backend=str(data.get("backend", cls.backend)),
-            obs_width=int(data.get("obs_width", cls.obs_width)),
-            obs_height=int(data.get("obs_height", cls.obs_height)),
-            frame_stack=int(data.get("frame_stack", cls.frame_stack)),
+            backend=str(data.get("backend", defaults.backend)),
+            obs_width=int(data.get("obs_width", defaults.obs_width)),
+            obs_height=int(data.get("obs_height", defaults.obs_height)),
+            frame_stack=int(data.get("frame_stack", defaults.frame_stack)),
             window=WindowConfig.from_dict(data.get("window")),
             action_grid=ActionGridConfig.from_dict(data.get("action_grid", {})),
             reward=RewardConfig.from_dict(data.get("reward")),
@@ -328,13 +336,13 @@ class EnvConfig:
             score_ocr=ScoreOCRConfig.from_dict(data.get("score_ocr")),
             health_bar=HealthBarConfig.from_dict(data.get("health_bar")),
             game_over_on_health_missing=bool(
-                data.get("game_over_on_health_missing", cls.game_over_on_health_missing)
+                data.get("game_over_on_health_missing", defaults.game_over_on_health_missing)
             ),
             health_missing_patience=int(
-                data.get("health_missing_patience", cls.health_missing_patience)
+                data.get("health_missing_patience", defaults.health_missing_patience)
             ),
             game_over_template=data.get("game_over_template"),
-            game_over_threshold=float(data.get("game_over_threshold", cls.game_over_threshold)),
+            game_over_threshold=float(data.get("game_over_threshold", defaults.game_over_threshold)),
         )
 
 
@@ -359,21 +367,22 @@ class TrainConfig:
     def from_dict(cls, data: dict[str, Any] | None) -> "TrainConfig":
         if not data:
             return cls()
+        defaults = cls()
         return cls(
-            n_envs=int(data.get("n_envs", cls.n_envs)),
-            total_timesteps=int(data.get("total_timesteps", cls.total_timesteps)),
-            n_steps=int(data.get("n_steps", cls.n_steps)),
-            batch_size=int(data.get("batch_size", cls.batch_size)),
-            learning_rate=float(data.get("learning_rate", cls.learning_rate)),
-            gamma=float(data.get("gamma", cls.gamma)),
-            gae_lambda=float(data.get("gae_lambda", cls.gae_lambda)),
-            clip_range=float(data.get("clip_range", cls.clip_range)),
-            ent_coef=float(data.get("ent_coef", cls.ent_coef)),
-            vf_coef=float(data.get("vf_coef", cls.vf_coef)),
-            max_grad_norm=float(data.get("max_grad_norm", cls.max_grad_norm)),
-            checkpoint_every=int(data.get("checkpoint_every", cls.checkpoint_every)),
-            seed=int(data.get("seed", cls.seed)),
-            device=str(data.get("device", cls.device)),
+            n_envs=int(data.get("n_envs", defaults.n_envs)),
+            total_timesteps=int(data.get("total_timesteps", defaults.total_timesteps)),
+            n_steps=int(data.get("n_steps", defaults.n_steps)),
+            batch_size=int(data.get("batch_size", defaults.batch_size)),
+            learning_rate=float(data.get("learning_rate", defaults.learning_rate)),
+            gamma=float(data.get("gamma", defaults.gamma)),
+            gae_lambda=float(data.get("gae_lambda", defaults.gae_lambda)),
+            clip_range=float(data.get("clip_range", defaults.clip_range)),
+            ent_coef=float(data.get("ent_coef", defaults.ent_coef)),
+            vf_coef=float(data.get("vf_coef", defaults.vf_coef)),
+            max_grad_norm=float(data.get("max_grad_norm", defaults.max_grad_norm)),
+            checkpoint_every=int(data.get("checkpoint_every", defaults.checkpoint_every)),
+            seed=int(data.get("seed", defaults.seed)),
+            device=str(data.get("device", defaults.device)),
         )
 
 
@@ -392,12 +401,50 @@ class RootConfig:
         )
 
 
+def _resolve_optional_path(
+    value: str | None,
+    *,
+    config_path: Path,
+    expect_dir: bool,
+) -> str | None:
+    if not value:
+        return value
+
+    raw = Path(value).expanduser()
+    if raw.is_absolute():
+        return str(raw.resolve())
+
+    candidates = [
+        (Path.cwd() / raw).resolve(),
+        (config_path.parent / raw).resolve(),
+    ]
+    if config_path.parent.name.lower() in {"config", "configs"}:
+        candidates.append((config_path.parent.parent / raw).resolve())
+
+    for candidate in candidates:
+        if expect_dir and candidate.is_dir():
+            return str(candidate)
+        if not expect_dir and candidate.exists():
+            return str(candidate)
+
+    # Fall back to config-relative path when nothing exists yet.
+    return str((config_path.parent / raw).resolve())
+
+
 def load_config(path: str | Path) -> RootConfig:
     path_obj = Path(path).expanduser().resolve()
     raw = tomllib.loads(path_obj.read_text(encoding="utf-8"))
     cfg = RootConfig.from_dict(raw)
 
-    if cfg.env.game_over_template:
-        cfg.env.game_over_template = str(Path(cfg.env.game_over_template).expanduser().resolve())
+    cfg.env.game_over_template = _resolve_optional_path(
+        cfg.env.game_over_template,
+        config_path=path_obj,
+        expect_dir=False,
+    )
+    cfg.env.score_ocr.template_dir = _resolve_optional_path(
+        cfg.env.score_ocr.template_dir,
+        config_path=path_obj,
+        expect_dir=True,
+    )
 
     return cfg

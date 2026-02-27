@@ -20,9 +20,50 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_score_template_status(cfg_path: Path, method: str, template_dir: str | None) -> None:
+    method_key = method.strip().lower()
+    if method_key not in {"template", "auto"}:
+        return
+
+    if not template_dir:
+        print(f"[score_ocr] method={method_key} but template_dir is not set (config: {cfg_path})")
+        return
+
+    template_path = Path(template_dir)
+    if not template_path.exists():
+        print(f"[score_ocr] template_dir missing: {template_path}")
+        return
+    if not template_path.is_dir():
+        print(f"[score_ocr] template_dir is not a directory: {template_path}")
+        return
+
+    found_digits: set[int] = set()
+    for child in template_path.iterdir():
+        if not child.is_file():
+            continue
+        stem = child.stem.strip()
+        if len(stem) == 1 and stem.isdigit():
+            found_digits.add(int(stem))
+
+    missing = [str(i) for i in range(10) if i not in found_digits]
+    if missing:
+        print(
+            "[score_ocr] missing digit templates: "
+            + ", ".join(missing)
+            + f" (dir: {template_path})"
+        )
+    else:
+        print(f"[score_ocr] template_dir ok: {template_path}")
+
+
 def main() -> None:
     args = _build_arg_parser().parse_args()
     cfg = load_config(args.config)
+    _print_score_template_status(
+        cfg_path=args.config,
+        method=cfg.env.score_ocr.method,
+        template_dir=cfg.env.score_ocr.template_dir,
+    )
     window_titles = [args.window_title] if args.window_title else None
     env = make_env_factory(cfg, rank=0, seed=cfg.train.seed, window_titles=window_titles)()
 
