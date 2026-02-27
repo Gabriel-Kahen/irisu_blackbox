@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.24.2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "irisu-blackbox"
+version = "0.1.0"
+description = "Black-box RL training stack for Irisu Syndrome using live screen capture and mouse control"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Irisu Blackbox Contributors"}
+]
+dependencies = [
+  "gymnasium>=0.29.1",
+  "numpy>=1.26.0",
+  "opencv-python>=4.9.0",
+  "mss>=9.0.1",
+  "pyautogui>=0.9.54",
+  "pygetwindow>=0.0.9",
+  "sb3-contrib>=2.3.0",
+  "stable-baselines3>=2.3.0",
+  "torch>=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.4.0",
+]
+ocr = [
+  "pytesseract>=0.3.10",
+]
+
+[project.scripts]
+irisu-train = "irisu_blackbox.train:main"
+irisu-play = "irisu_blackbox.play:main"
+irisu-calibrate = "irisu_blackbox.calibrate:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/irisu_blackbox"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

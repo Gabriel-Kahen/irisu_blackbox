@@ -1,0 +1,85 @@
+# Default config targets mock backend so pipeline can be validated without the real game.
+# Set env.backend = "windows" for live play.
+
+window_titles = []
+
+[env]
+backend = "mock"
+obs_width = 96
+obs_height = 96
+frame_stack = 4
+game_over_template = ""
+game_over_threshold = 0.92
+
+[env.window]
+title_regex = "Irisu"
+window_index = 0
+focus_before_step = false
+
+# Optional fixed capture region (screen coordinates). If omitted, window bounds are used.
+# [env.window.capture_region]
+# left = 100
+# top = 100
+# width = 640
+# height = 480
+
+[env.action_grid]
+rows = 8
+cols = 8
+left = 0
+top = 0
+right = 640
+bottom = 480
+
+[env.reward]
+survival_reward = 0.01
+activity_reward_scale = 0.15
+cascade_threshold = 0.18
+cascade_bonus = 0.25
+stale_threshold = 0.01
+stale_patience = 90
+stale_penalty = -0.25
+score_delta_scale = 0.001
+
+[env.episode]
+max_steps = 5000
+action_repeat = 1
+click_hold_s = 0.01
+inter_step_sleep_s = 0.0
+
+# Macro executed on env.reset() for live game flow.
+# [[env.reset_macro]]
+# kind = "key"
+# key = "r"
+# duration_s = 0.2
+#
+# [[env.reset_macro]]
+# kind = "sleep"
+# duration_s = 0.8
+
+[env.score_ocr]
+enabled = false
+tesseract_cmd = ""
+
+# Optional score OCR region (screen coordinates).
+# [env.score_ocr.region]
+# left = 30
+# top = 30
+# width = 170
+# height = 40
+
+[train]
+n_envs = 1
+total_timesteps = 1000000
+n_steps = 256
+batch_size = 256
+learning_rate = 0.0003
+gamma = 0.995
+gae_lambda = 0.95
+clip_range = 0.2
+ent_coef = 0.01
+vf_coef = 0.5
+max_grad_norm = 0.5
+checkpoint_every = 100000
+seed = 1
+device = "auto"
