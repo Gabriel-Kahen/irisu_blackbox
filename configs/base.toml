@@ -75,6 +75,18 @@ duration_s = 0.04
 
 [[env.reset_macro]]
 kind = "sleep"
+duration_s = 0.15
+
+[[env.reset_macro]]
+kind = "click"
+x = 403
+y = 261
+button = "left"
+relative_to_capture = true
+duration_s = 0.04
+
+[[env.reset_macro]]
+kind = "sleep"
 duration_s = 0.8
 
 [env.score_ocr]
