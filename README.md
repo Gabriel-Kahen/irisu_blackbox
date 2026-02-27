@@ -106,7 +106,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 5. Use calibration preview to verify grid alignment:
 
 ```bash
-irisu-calibrate --config configs/base.toml --out artifacts/grid_overlay.png
+irisu-calibrate --config configs/base.toml --out grid_overlay.png
 ```
 
 6. Train:

@@ -12,7 +12,7 @@ from irisu_blackbox.factory import make_env_factory
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Capture a frame and overlay action grid for calibration")
     parser.add_argument("--config", type=Path, default=Path("configs/base.toml"))
-    parser.add_argument("--out", type=Path, default=Path("artifacts/grid_overlay.png"))
+    parser.add_argument("--out", type=Path, default=Path("grid_overlay.png"))
     parser.add_argument("--window-title", type=str, default=None)
     return parser
 
