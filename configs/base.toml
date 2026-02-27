@@ -71,8 +71,8 @@ height = 60
 [env.health_bar]
 enabled = true
 column_fill_threshold = 0.08
-adaptive_fill_peak_ratio = 0.55
-min_visible_pixels = 200
+adaptive_fill_peak_ratio = 0.65
+min_visible_pixels = 80
 invert_percent = false
 hsv_lower_1 = [0, 70, 40]
 hsv_upper_1 = [12, 255, 255]
@@ -80,10 +80,10 @@ hsv_lower_2 = [170, 70, 40]
 hsv_upper_2 = [179, 255, 255]
 
 [env.health_bar.region]
-left = 130
-top = 430
-width = 390
-height = 26
+left = 132
+top = 441
+width = 388
+height = 14
 
 [train]
 n_envs = 1
