@@ -49,7 +49,15 @@ class HUDReader:
         )
 
     def _read_health(self, frame_bgr: np.ndarray) -> tuple[float | None, bool | None]:
-        if not self.health_cfg.enabled or self.health_cfg.region is None:
+        if not self.health_cfg.enabled:
+            return None, None
+
+        if self.health_cfg.method.lower() == "scanline":
+            return self._read_health_scanline(frame_bgr)
+        return self._read_health_profile(frame_bgr)
+
+    def _read_health_profile(self, frame_bgr: np.ndarray) -> tuple[float | None, bool | None]:
+        if self.health_cfg.region is None:
             return None, None
 
         crop = self._crop(frame_bgr, self.health_cfg.region)
@@ -122,6 +130,93 @@ class HUDReader:
             percent = float((width - start) / width)
         else:
             percent = float((end + 1) / width)
+
+        percent = max(0.0, min(1.0, percent))
+        if self.health_cfg.invert_percent:
+            percent = 1.0 - percent
+            percent = max(0.0, min(1.0, percent))
+        return percent, True
+
+    def _read_health_scanline(self, frame_bgr: np.ndarray) -> tuple[float | None, bool | None]:
+        if (
+            self.health_cfg.scanline_start_x is None
+            or self.health_cfg.scanline_end_x is None
+            or self.health_cfg.scanline_y is None
+        ):
+            return None, None
+
+        h, w = frame_bgr.shape[:2]
+        x0 = int(max(0, min(w - 1, min(self.health_cfg.scanline_start_x, self.health_cfg.scanline_end_x))))
+        x1 = int(max(0, min(w - 1, max(self.health_cfg.scanline_start_x, self.health_cfg.scanline_end_x))))
+        y = int(max(0, min(h - 1, self.health_cfg.scanline_y)))
+        half_h = max(0, int(self.health_cfg.scanline_half_height))
+
+        if x1 <= x0:
+            return 0.0, False
+
+        y0 = max(0, y - half_h)
+        y1 = min(h, y + half_h + 1)
+        band = frame_bgr[y0:y1, x0 : x1 + 1]
+        if band.size == 0:
+            return 0.0, False
+
+        hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
+        lower_1 = np.array(self.health_cfg.hsv_lower_1, dtype=np.uint8)
+        upper_1 = np.array(self.health_cfg.hsv_upper_1, dtype=np.uint8)
+        lower_2 = np.array(self.health_cfg.hsv_lower_2, dtype=np.uint8)
+        upper_2 = np.array(self.health_cfg.hsv_upper_2, dtype=np.uint8)
+        mask_1 = cv2.inRange(hsv, lower_1, upper_1)
+        mask_2 = cv2.inRange(hsv, lower_2, upper_2)
+        mask = cv2.bitwise_or(mask_1, mask_2)
+
+        visible_pixels = int(np.count_nonzero(mask))
+        visible = visible_pixels >= self.health_cfg.min_visible_pixels
+        if not visible:
+            return 0.0, False
+
+        saturation = hsv[:, :, 1].astype(np.float32) / 255.0
+        value = hsv[:, :, 2].astype(np.float32) / 255.0
+        red_strength = ((0.75 * saturation) + (0.25 * value)) * (mask.astype(np.float32) / 255.0)
+        col_strength = red_strength.mean(axis=0)
+        if col_strength.size > 4:
+            col_strength = cv2.GaussianBlur(col_strength[None, :], (1, 0), 1.0)[0]
+
+        if col_strength.size <= 1:
+            return 0.0, True
+
+        grad = np.diff(col_strength)
+        abs_grad = np.abs(grad)
+        boundary = int(np.argmax(abs_grad))
+        contrast = float(abs_grad[boundary])
+
+        direction = self.health_cfg.fill_direction.lower()
+        length = col_strength.size
+
+        if contrast < self.health_cfg.scanline_contrast_threshold:
+            # Fallback to profile-style estimation when the edge is weak.
+            baseline = float(np.percentile(col_strength, 20))
+            peak_strength = float(np.percentile(col_strength, 95))
+            if peak_strength <= baseline:
+                return 0.0, True
+            threshold = baseline + (
+                (peak_strength - baseline) * self.health_cfg.adaptive_fill_peak_ratio
+            )
+            threshold = max(self.health_cfg.column_fill_threshold, threshold)
+            col_mask = (col_strength >= threshold).astype(np.uint8)
+            spans = _find_true_spans(col_mask)
+            if not spans:
+                return 0.0, True
+            if direction == "right_to_left":
+                start, _ = max(spans, key=lambda item: item[1])
+                percent = float((length - start) / length)
+            else:
+                _, end = min(spans, key=lambda item: item[0])
+                percent = float((end + 1) / length)
+        else:
+            if direction == "right_to_left":
+                percent = float((length - (boundary + 1)) / length)
+            else:
+                percent = float((boundary + 1) / length)
 
         percent = max(0.0, min(1.0, percent))
         if self.health_cfg.invert_percent:

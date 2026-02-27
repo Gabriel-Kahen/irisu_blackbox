@@ -107,6 +107,12 @@ def _parse_hsv_triplet(
 class HealthBarConfig:
     enabled: bool = False
     region: Rect | None = None
+    method: str = "profile"
+    scanline_start_x: int | None = None
+    scanline_end_x: int | None = None
+    scanline_y: int | None = None
+    scanline_half_height: int = 1
+    scanline_contrast_threshold: float = 0.02
     hsv_lower_1: tuple[int, int, int] = (0, 70, 40)
     hsv_upper_1: tuple[int, int, int] = (12, 255, 255)
     hsv_lower_2: tuple[int, int, int] = (170, 70, 40)
@@ -126,6 +132,20 @@ class HealthBarConfig:
         return cls(
             enabled=bool(data.get("enabled", cls.enabled)),
             region=region,
+            method=str(data.get("method", cls.method)),
+            scanline_start_x=(
+                int(data["scanline_start_x"]) if data.get("scanline_start_x") is not None else None
+            ),
+            scanline_end_x=(
+                int(data["scanline_end_x"]) if data.get("scanline_end_x") is not None else None
+            ),
+            scanline_y=int(data["scanline_y"]) if data.get("scanline_y") is not None else None,
+            scanline_half_height=int(
+                data.get("scanline_half_height", cls.scanline_half_height)
+            ),
+            scanline_contrast_threshold=float(
+                data.get("scanline_contrast_threshold", cls.scanline_contrast_threshold)
+            ),
             hsv_lower_1=_parse_hsv_triplet(data.get("hsv_lower_1"), cls.hsv_lower_1),
             hsv_upper_1=_parse_hsv_triplet(data.get("hsv_upper_1"), cls.hsv_upper_1),
             hsv_lower_2=_parse_hsv_triplet(data.get("hsv_lower_2"), cls.hsv_lower_2),

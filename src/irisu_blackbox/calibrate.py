@@ -53,6 +53,35 @@ def _draw_region(frame_bgr, region: Rect, label: str, color: tuple[int, int, int
     return out
 
 
+def _draw_scanline(
+    frame_bgr,
+    x_start: int,
+    x_end: int,
+    y: int,
+    half_height: int,
+    label: str,
+    color: tuple[int, int, int],
+):
+    out = frame_bgr.copy()
+    left = min(x_start, x_end)
+    right = max(x_start, x_end)
+    top = max(0, y - half_height)
+    bottom = y + half_height
+    cv2.rectangle(out, (left, top), (right, bottom), color, 2)
+    cv2.line(out, (left, y), (right, y), color, 1)
+    cv2.putText(
+        out,
+        label,
+        (left, max(12, top - 6)),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        color,
+        1,
+        cv2.LINE_AA,
+    )
+    return out
+
+
 def _to_frame_coords(x: int, y: int, capture_region: Rect | None) -> tuple[int, int]:
     if capture_region is None:
         return x, y
@@ -88,8 +117,24 @@ def main() -> None:
         )
         if cfg.env.score_ocr.enabled and cfg.env.score_ocr.region is not None:
             preview = _draw_region(preview, cfg.env.score_ocr.region, "score_ocr", (0, 255, 80))
-        if cfg.env.health_bar.enabled and cfg.env.health_bar.region is not None:
-            preview = _draw_region(preview, cfg.env.health_bar.region, "health_bar", (0, 80, 255))
+        if cfg.env.health_bar.enabled:
+            if cfg.env.health_bar.method.lower() == "scanline":
+                if (
+                    cfg.env.health_bar.scanline_start_x is not None
+                    and cfg.env.health_bar.scanline_end_x is not None
+                    and cfg.env.health_bar.scanline_y is not None
+                ):
+                    preview = _draw_scanline(
+                        preview,
+                        x_start=cfg.env.health_bar.scanline_start_x,
+                        x_end=cfg.env.health_bar.scanline_end_x,
+                        y=cfg.env.health_bar.scanline_y,
+                        half_height=cfg.env.health_bar.scanline_half_height,
+                        label="health_scanline",
+                        color=(0, 80, 255),
+                    )
+            elif cfg.env.health_bar.region is not None:
+                preview = _draw_region(preview, cfg.env.health_bar.region, "health_bar", (0, 80, 255))
 
         out_path = args.out.expanduser().resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)

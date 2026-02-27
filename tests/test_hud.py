@@ -77,3 +77,32 @@ def test_health_uses_bright_fill_not_dark_background():
     assert hud.health_visible is True
     assert hud.health_percent is not None
     assert 0.75 <= hud.health_percent <= 0.85
+
+
+def test_scanline_boundary_estimates_right_to_left_fill():
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    y = 50
+    x0, x1 = 20, 179
+    boundary = 60
+
+    # Left side is unfilled (darker red), right side is filled (brighter red).
+    frame[y - 1 : y + 2, x0 : boundary + 1] = (0, 0, 50)
+    frame[y - 1 : y + 2, boundary + 1 : x1 + 1] = (0, 0, 210)
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="right_to_left",
+        min_visible_pixels=10,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    hud = reader.read(frame)
+    assert hud.health_visible is True
+    assert hud.health_percent is not None
+    assert 0.72 <= hud.health_percent <= 0.78
