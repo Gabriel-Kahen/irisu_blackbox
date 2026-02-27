@@ -141,3 +141,48 @@ def test_health_smoothing_window_reduces_single_frame_spike():
     assert 0.75 <= h1 <= 0.9
     # Median of [~0.8, ~0.2, ~0.8] should settle near ~0.8.
     assert 0.7 <= h3 <= 0.9
+
+
+def test_score_is_monotonic_and_smoothed():
+    reader = HUDReader(
+        ScoreOCRConfig(
+            enabled=False,
+            smoothing_window=3,
+            monotonic_non_decreasing=True,
+            hold_last_value_when_missing=True,
+        ),
+        HealthBarConfig(enabled=False),
+    )
+
+    # Single-frame high spike should be filtered by median smoothing.
+    s1 = reader._stabilize_score(100)
+    s2 = reader._stabilize_score(102)
+    s3 = reader._stabilize_score(9999)
+    s4 = reader._stabilize_score(103)
+
+    assert s1 == 100
+    assert s2 >= s1
+    assert s3 < 1000
+    assert s4 >= s3
+
+    # Lower read should not decrease the committed score.
+    s5 = reader._stabilize_score(50)
+    assert s5 == s4
+
+    # Missing OCR keeps last value.
+    s6 = reader._stabilize_score(None)
+    assert s6 == s5
+
+
+def test_score_reset_clears_monotonic_state():
+    reader = HUDReader(
+        ScoreOCRConfig(enabled=False, smoothing_window=3, monotonic_non_decreasing=True),
+        HealthBarConfig(enabled=False),
+    )
+
+    before = reader._stabilize_score(250)
+    assert before == 250
+
+    reader.reset()
+    after = reader._stabilize_score(0)
+    assert after == 0

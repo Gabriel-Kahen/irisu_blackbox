@@ -49,6 +49,7 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
         _ = options
 
         self.backend.reset()
+        self.hud_reader.reset()
         raw = self.backend.capture_frame()
         hud = self.hud_reader.read(raw)
         processed = self.frame_processor.preprocess(raw)

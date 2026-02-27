@@ -78,6 +78,9 @@ class ScoreOCRConfig:
     enabled: bool = False
     region: Rect | None = None
     tesseract_cmd: str | None = None
+    smoothing_window: int = 5
+    monotonic_non_decreasing: bool = True
+    hold_last_value_when_missing: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ScoreOCRConfig":
@@ -89,6 +92,13 @@ class ScoreOCRConfig:
             enabled=bool(data.get("enabled", cls.enabled)),
             region=region,
             tesseract_cmd=data.get("tesseract_cmd"),
+            smoothing_window=int(data.get("smoothing_window", cls.smoothing_window)),
+            monotonic_non_decreasing=bool(
+                data.get("monotonic_non_decreasing", cls.monotonic_non_decreasing)
+            ),
+            hold_last_value_when_missing=bool(
+                data.get("hold_last_value_when_missing", cls.hold_last_value_when_missing)
+            ),
         )
 
 

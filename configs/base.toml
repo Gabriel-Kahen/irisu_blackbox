@@ -61,6 +61,9 @@ duration_s = 0.8
 [env.score_ocr]
 enabled = true
 tesseract_cmd = "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+smoothing_window = 5
+monotonic_non_decreasing = true
+hold_last_value_when_missing = true
 
 [env.score_ocr.region]
 left = 204
