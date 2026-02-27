@@ -9,8 +9,8 @@ game_over_on_health_missing = true
 health_missing_patience = 3
 game_over_template = "../artifacts/death_overlay.png"
 game_over_threshold = 0.92
-post_game_over_delay_s = 1.0
-reset_ready_template = "../artifacts/menu_screen.png"
+post_game_over_delay_s = 0.2
+reset_ready_template = ""
 reset_ready_threshold = 0.92
 reset_ready_timeout_s = 6.0
 reset_ready_poll_s = 0.05
@@ -63,7 +63,7 @@ duration_s = 0.04
 
 [[env.game_over_macro]]
 kind = "sleep"
-duration_s = 0.4
+duration_s = 1.0
 
 [[env.reset_macro]]
 kind = "click"
@@ -72,22 +72,6 @@ y = 261
 button = "left"
 relative_to_capture = true
 duration_s = 0.04
-
-[[env.reset_macro]]
-kind = "sleep"
-duration_s = 0.15
-
-[[env.reset_macro]]
-kind = "click"
-x = 403
-y = 261
-button = "left"
-relative_to_capture = true
-duration_s = 0.04
-
-[[env.reset_macro]]
-kind = "sleep"
-duration_s = 0.8
 
 [env.score_ocr]
 enabled = true
