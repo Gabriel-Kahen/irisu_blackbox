@@ -76,19 +76,13 @@ def main() -> None:
     patience = max(1, int(patience))
 
     missing_streak = 0
-    seen_live_hud = False
 
     try:
         while True:
             frame = env.backend.capture_frame()
             hud = env.hud_reader.read(frame)
-            death_detected = env.termination_detector.matches(frame)
-            menu_detected = env.reset_ready_detector.matches(frame)
 
-            if hud.health_visible is True:
-                seen_live_hud = True
-                missing_streak = 0
-            elif hud.health_visible is False and seen_live_hud:
+            if hud.health_visible is False:
                 missing_streak += 1
             else:
                 missing_streak = 0
@@ -104,25 +98,13 @@ def main() -> None:
                 flush=True,
             )
 
-            should_reset = (
-                death_detected
-                or menu_detected
-                or (cfg.env.health_bar.enabled and seen_live_hud and missing_streak >= patience)
-            )
+            should_reset = cfg.env.health_bar.enabled and missing_streak >= patience
 
             if args.auto_reset and should_reset:
                 env._pending_post_game_over_delay = True
                 env.reset()
                 missing_streak = 0
-                seen_live_hud = False
-                reason = (
-                    "death template"
-                    if death_detected
-                    else "menu template"
-                    if menu_detected
-                    else "health bar missing"
-                )
-                print(f"\n[reset] {reason} -> ran reset flow")
+                print("\n[reset] health bar missing -> ran reset flow")
 
             time.sleep(max(0.01, args.interval_s))
     except KeyboardInterrupt:
