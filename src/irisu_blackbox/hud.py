@@ -29,11 +29,15 @@ class HUDReader:
         self.score_cfg = score_cfg
         self.health_cfg = health_cfg
         self._committed_score: int | None = None
+        self._pending_large_score: int | None = None
+        self._pending_large_score_streak = 0
         self._health_smoothing_window = max(1, int(self.health_cfg.smoothing_window))
         self._health_history: deque[float] = deque(maxlen=self._health_smoothing_window)
 
     def reset(self) -> None:
         self._committed_score = None
+        self._pending_large_score = None
+        self._pending_large_score_streak = 0
         self._health_history.clear()
 
     @staticmethod
@@ -262,18 +266,49 @@ class HUDReader:
 
         if self._committed_score is None:
             self._committed_score = candidate
+            self._pending_large_score = None
+            self._pending_large_score_streak = 0
             return self._committed_score
 
         max_step = int(self.score_cfg.max_step_increase)
         if max_step > 0 and candidate > (self._committed_score + max_step):
-            # Likely OCR spike; ignore this step and keep current score.
-            return self._committed_score
+            confirmed = self._confirm_large_jump(candidate, max_step)
+            if confirmed is None:
+                # Large increase needs confirmation to avoid one-frame OCR spikes.
+                return self._committed_score
+            candidate = confirmed
+        else:
+            self._pending_large_score = None
+            self._pending_large_score_streak = 0
 
         if self.score_cfg.monotonic_non_decreasing:
             self._committed_score = max(self._committed_score, candidate)
         else:
             self._committed_score = candidate
         return self._committed_score
+
+    def _confirm_large_jump(self, candidate: int, max_step: int) -> int | None:
+        tolerance = max(1, max_step // 2)
+
+        if self._pending_large_score is None:
+            self._pending_large_score = candidate
+            self._pending_large_score_streak = 1
+            return None
+
+        if candidate >= (self._pending_large_score - tolerance):
+            self._pending_large_score = max(self._pending_large_score, candidate)
+            self._pending_large_score_streak += 1
+        else:
+            self._pending_large_score = candidate
+            self._pending_large_score_streak = 1
+
+        if self._pending_large_score_streak < 2:
+            return None
+
+        confirmed = int(self._pending_large_score)
+        self._pending_large_score = None
+        self._pending_large_score_streak = 0
+        return confirmed
 
     def _smooth_health_percent(
         self,

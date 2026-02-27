@@ -202,3 +202,43 @@ def test_score_low_confidence_is_ignored():
     # Simulate candidate from OCR after confidence gate failed (i.e., read None).
     stable = reader._stabilize_score(None)
     assert stable == 123
+
+
+def test_score_large_jump_confirms_on_second_frame():
+    reader = HUDReader(
+        ScoreOCRConfig(
+            enabled=False,
+            monotonic_non_decreasing=True,
+            hold_last_value_when_missing=True,
+            max_step_increase=500,
+        ),
+        HealthBarConfig(enabled=False),
+    )
+
+    s1 = reader._stabilize_score(1000)
+    s2 = reader._stabilize_score(6000)
+    s3 = reader._stabilize_score(6100)
+
+    assert s1 == 1000
+    assert s2 == 1000
+    assert s3 == 6100
+
+
+def test_score_one_frame_large_spike_is_rejected():
+    reader = HUDReader(
+        ScoreOCRConfig(
+            enabled=False,
+            monotonic_non_decreasing=True,
+            hold_last_value_when_missing=True,
+            max_step_increase=500,
+        ),
+        HealthBarConfig(enabled=False),
+    )
+
+    s1 = reader._stabilize_score(1000)
+    s2 = reader._stabilize_score(999999)
+    s3 = reader._stabilize_score(1010)
+
+    assert s1 == 1000
+    assert s2 == 1000
+    assert s3 == 1010
