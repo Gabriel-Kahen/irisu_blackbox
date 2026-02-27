@@ -327,6 +327,7 @@ class EnvConfig:
     action_grid: ActionGridConfig = field(default_factory=ActionGridConfig)
     reward: RewardConfig = field(default_factory=RewardConfig)
     episode: EpisodeConfig = field(default_factory=EpisodeConfig)
+    game_over_macro: list[ResetMacroStep] = field(default_factory=list)
     reset_macro: list[ResetMacroStep] = field(default_factory=list)
     score_ocr: ScoreOCRConfig = field(default_factory=ScoreOCRConfig)
     health_bar: HealthBarConfig = field(default_factory=HealthBarConfig)
@@ -347,6 +348,9 @@ class EnvConfig:
         if not data:
             return cls()
         defaults = cls()
+        game_over_macro = [
+            ResetMacroStep.from_dict(step) for step in data.get("game_over_macro", [])
+        ]
         reset_macro = [ResetMacroStep.from_dict(step) for step in data.get("reset_macro", [])]
         return cls(
             backend=str(data.get("backend", defaults.backend)),
@@ -357,6 +361,7 @@ class EnvConfig:
             action_grid=ActionGridConfig.from_dict(data.get("action_grid", {})),
             reward=RewardConfig.from_dict(data.get("reward")),
             episode=EpisodeConfig.from_dict(data.get("episode")),
+            game_over_macro=game_over_macro,
             reset_macro=reset_macro,
             score_ocr=ScoreOCRConfig.from_dict(data.get("score_ocr")),
             health_bar=HealthBarConfig.from_dict(data.get("health_bar")),

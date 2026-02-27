@@ -149,5 +149,19 @@ class WindowsGameBackend(GameBackend):
             self._focus_window()
         self._run_macro()
 
+    def run_macro(self, steps: list[ResetMacroStep]) -> None:
+        if not steps:
+            return
+        self._refresh_window_and_region()
+        if self.binding.focus_before_step:
+            self._focus_window()
+
+        original = self.reset_macro
+        try:
+            self.reset_macro = steps
+            self._run_macro()
+        finally:
+            self.reset_macro = original
+
     def close(self) -> None:
         self._sct.close()

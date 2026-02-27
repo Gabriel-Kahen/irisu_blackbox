@@ -54,6 +54,7 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
         _ = options
 
         self._run_post_game_over_delay_if_needed()
+        self._run_game_over_macro_if_needed()
         self._wait_for_reset_ready()
         self.backend.reset()
         self.hud_reader.reset()
@@ -93,6 +94,16 @@ class IrisuBlackBoxEnv(gym.Env[np.ndarray, int]):
                 return
             if poll_s > 0:
                 time.sleep(poll_s)
+
+    def _run_game_over_macro_if_needed(self) -> None:
+        if not self.cfg.game_over_macro:
+            return
+
+        frame = self.backend.capture_frame()
+        if self.cfg.reset_ready_template and self.reset_ready_detector.matches(frame):
+            return
+
+        self.backend.run_macro(self.cfg.game_over_macro)
 
     def _wait_for_round_start(self) -> tuple[np.ndarray, Any]:
         raw = self.backend.capture_frame()

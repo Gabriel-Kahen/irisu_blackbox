@@ -5,7 +5,14 @@ import numpy as np
 
 from irisu_blackbox.backends.base import GameBackend
 from irisu_blackbox.backends.mock import MockBackendConfig, MockGameBackend
-from irisu_blackbox.config import ActionGridConfig, EnvConfig, EpisodeConfig, HealthBarConfig, Rect
+from irisu_blackbox.config import (
+    ActionGridConfig,
+    EnvConfig,
+    EpisodeConfig,
+    HealthBarConfig,
+    Rect,
+    ResetMacroStep,
+)
 from irisu_blackbox.env import IrisuBlackBoxEnv
 
 
@@ -50,6 +57,7 @@ class ScriptedResetBackend(GameBackend):
         self.pre_capture_count = 0
         self.post_capture_count = 0
         self.reset_calls = 0
+        self.game_over_macro_calls = 0
 
     def capture_frame(self) -> np.ndarray:
         if self.phase == "pre":
@@ -67,6 +75,9 @@ class ScriptedResetBackend(GameBackend):
     def reset(self) -> None:
         self.reset_calls += 1
         self.phase = "post"
+
+    def run_macro(self, steps) -> None:
+        self.game_over_macro_calls += 1
 
     def close(self) -> None:
         return
@@ -109,6 +120,7 @@ def test_env_reset_waits_for_menu_then_round_start(tmp_path: Path):
             column_fill_threshold=0.05,
             smoothing_window=1,
         ),
+        game_over_macro=[ResetMacroStep(kind="click", x=32, y=32)],
         reset_ready_template=str(template_path),
         reset_ready_threshold=0.95,
         reset_ready_timeout_s=1.0,
@@ -124,10 +136,55 @@ def test_env_reset_waits_for_menu_then_round_start(tmp_path: Path):
     env = IrisuBlackBoxEnv(cfg=cfg, backend=backend)
     try:
         _, info = env.reset()
+        assert backend.game_over_macro_calls == 1
         assert backend.reset_calls == 1
         assert backend.pre_capture_count >= 3
         assert backend.post_capture_count >= 2
         assert info["hud"]["health_visible"] is True
+    finally:
+        env.close()
+
+
+def test_env_reset_skips_game_over_macro_if_already_on_menu(tmp_path: Path):
+    template = np.full((12, 12), 40, dtype=np.uint8)
+    template[2:10, 2:10] = 255
+    template[4:8, 4:8] = 80
+    template_path = tmp_path / "menu_template.png"
+    ok = cv2.imwrite(str(template_path), template)
+    assert ok
+
+    cfg = EnvConfig(
+        backend="windows",
+        obs_width=64,
+        obs_height=64,
+        frame_stack=2,
+        action_grid=ActionGridConfig(rows=4, cols=4, left=0, top=0, right=64, bottom=64),
+        episode=EpisodeConfig(max_steps=100, action_repeat=1),
+        health_bar=HealthBarConfig(
+            enabled=True,
+            region=Rect(left=0, top=0, width=10, height=10),
+            min_visible_pixels=1,
+            column_fill_threshold=0.05,
+            smoothing_window=1,
+        ),
+        game_over_macro=[ResetMacroStep(kind="click", x=32, y=32)],
+        reset_ready_template=str(template_path),
+        reset_ready_threshold=0.95,
+        reset_ready_timeout_s=1.0,
+        reset_ready_poll_s=0.0,
+        round_start_timeout_s=1.0,
+        round_start_poll_s=0.0,
+    )
+
+    backend = ScriptedResetBackend(
+        pre_reset_frames=[_menu_frame(True)],
+        post_reset_frames=[_gameplay_frame()],
+    )
+    env = IrisuBlackBoxEnv(cfg=cfg, backend=backend)
+    try:
+        env.reset()
+        assert backend.game_over_macro_calls == 0
+        assert backend.reset_calls == 1
     finally:
         env.close()
 

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+import time
 
 import cv2
 import numpy as np
 
+from irisu_blackbox.config import ResetMacroStep
 from irisu_blackbox.backends.base import GameBackend
 
 
@@ -111,6 +113,20 @@ class MockGameBackend(GameBackend):
         self._target = np.array([self.cfg.width // 2, self.cfg.height // 2], dtype=np.float32)
         self._velocity = np.array([2.0, 1.0], dtype=np.float32)
         self._pulse = 0.0
+
+    def run_macro(self, steps: list[ResetMacroStep]) -> None:
+        for step in steps:
+            kind = step.kind.lower()
+            if kind == "sleep":
+                if step.duration_s > 0:
+                    time.sleep(step.duration_s)
+                continue
+            if kind == "click":
+                if step.x is not None and step.y is not None:
+                    self.click(step.x, step.y, button=step.button, hold_s=step.duration_s)
+                continue
+            if kind == "key":
+                continue
 
     def close(self) -> None:
         return

@@ -53,6 +53,18 @@ click_hold_s = 0.01
 max_clicks_per_second = 3.0
 inter_step_sleep_s = 0.0
 
+[[env.game_over_macro]]
+kind = "click"
+x = 325
+y = 240
+button = "left"
+relative_to_capture = true
+duration_s = 0.04
+
+[[env.game_over_macro]]
+kind = "sleep"
+duration_s = 0.4
+
 [[env.reset_macro]]
 kind = "click"
 x = 414

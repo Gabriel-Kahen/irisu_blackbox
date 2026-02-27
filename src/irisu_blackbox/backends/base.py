@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from irisu_blackbox.config import ResetMacroStep
+
 
 class GameBackend(ABC):
     @abstractmethod
@@ -17,6 +19,10 @@ class GameBackend(ABC):
     @abstractmethod
     def reset(self) -> None:
         """Reset game to a new episode using scripted UI actions."""
+
+    def run_macro(self, steps: list[ResetMacroStep]) -> None:
+        """Run an arbitrary UI macro."""
+        raise NotImplementedError(f"{self.__class__.__name__} does not support run_macro()")
 
     @abstractmethod
     def close(self) -> None:

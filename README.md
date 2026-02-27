@@ -75,7 +75,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 
 2. Set click-grid bounds (`env.action_grid.left/top/right/bottom`) in screen coordinates.
 
-3. Define `env.reset_macro` so `env.reset()` reliably starts a new run.
+3. Define `env.game_over_macro` to dismiss the death screen, then `env.reset_macro` to start a new run.
 4. Configure HUD regions to track score and health:
 
 - `env.score_ocr`: score region + optional tesseract path
@@ -136,6 +136,7 @@ If `relative_to_capture = true`, `x`/`y` are interpreted relative to the capture
 For a robust death -> menu -> new run loop:
 
 - terminate on health-bar disappearance and/or a death-overlay template
+- run `env.game_over_macro` once if reset begins off-menu (for example, on the death screen)
 - optionally wait for `env.reset_ready_template` (menu screen) before running the reset macro
 - let `env.reset()` wait for the HUD to reappear before returning the first observation
 
