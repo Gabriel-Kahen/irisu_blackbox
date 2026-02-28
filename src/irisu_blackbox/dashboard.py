@@ -10,8 +10,10 @@ from irisu_blackbox.config import ActionGridConfig, RootConfig, load_config
 
 try:  # pragma: no cover - depends on installed runtime packages
     from tensorboard.backend.event_processing import event_accumulator as tb_event_accumulator
+    from tensorboard.util import tensor_util as tb_tensor_util
 except Exception as exc:  # pragma: no cover
     tb_event_accumulator = None
+    tb_tensor_util = None
     _TENSORBOARD_IMPORT_ERROR = exc
 else:  # pragma: no cover
     _TENSORBOARD_IMPORT_ERROR = None
@@ -116,10 +118,18 @@ class TensorboardMetricsReader:
         self._accumulator = None
 
     def _latest_event_file(self) -> Path | None:
-        if not self.tensorboard_dir.exists():
-            return None
+        search_roots = []
+        if self.tensorboard_dir.exists():
+            search_roots.append(self.tensorboard_dir)
+        if self.run_dir.exists():
+            search_roots.append(self.run_dir)
+
+        event_files: list[Path] = []
+        for root in search_roots:
+            event_files.extend(root.rglob("events.out.tfevents.*"))
+
         event_files = sorted(
-            self.tensorboard_dir.rglob("events.out.tfevents.*"),
+            {path.resolve() for path in event_files},
             key=lambda path: path.stat().st_mtime,
         )
         return event_files[-1] if event_files else None
@@ -132,9 +142,26 @@ class TensorboardMetricsReader:
         self._event_path = event_path
         self._accumulator = tb_event_accumulator.EventAccumulator(
             str(event_path),
-            size_guidance={"scalars": 0},
+            size_guidance={"scalars": 0, "tensors": 0},
         )
         return self._accumulator
+
+    @staticmethod
+    def _latest_scalar_from_tensors(accumulator, tag: str) -> tuple[float, float] | None:
+        if tb_tensor_util is None:
+            return None
+        try:
+            tensor_events = accumulator.Tensors(tag)
+        except Exception:
+            return None
+        if not tensor_events:
+            return None
+        latest = tensor_events[-1]
+        try:
+            value = tb_tensor_util.make_ndarray(latest.tensor_proto).item()
+        except Exception:
+            return None
+        return float(value), float(latest.wall_time)
 
     def read(self) -> TrainingSnapshot:
         if tb_event_accumulator is None:
@@ -164,7 +191,9 @@ class TensorboardMetricsReader:
         accumulator = self._ensure_accumulator(event_path)
         try:
             accumulator.Reload()
-            scalar_tags = set(accumulator.Tags().get("scalars", []))
+            tags = accumulator.Tags()
+            scalar_tags = set(tags.get("scalars", []))
+            tensor_tags = set(tags.get("tensors", []))
         except Exception as exc:
             return TrainingSnapshot(
                 metrics={},
@@ -177,17 +206,24 @@ class TensorboardMetricsReader:
         metrics: dict[str, float] = {}
         latest_wall_time: float | None = None
         for metric_name, tag in METRIC_TAGS.items():
-            if tag not in scalar_tags:
-                continue
-            try:
-                events = accumulator.Scalars(tag)
-            except Exception:
-                continue
-            if not events:
-                continue
-            latest = events[-1]
-            metrics[metric_name] = float(latest.value)
-            latest_wall_time = max(latest_wall_time or latest.wall_time, latest.wall_time)
+            if tag in scalar_tags:
+                try:
+                    events = accumulator.Scalars(tag)
+                except Exception:
+                    events = []
+                if events:
+                    latest = events[-1]
+                    metrics[metric_name] = float(latest.value)
+                    latest_wall_time = max(latest_wall_time or latest.wall_time, latest.wall_time)
+                    continue
+
+            if tag in tensor_tags:
+                tensor_value = self._latest_scalar_from_tensors(accumulator, tag)
+                if tensor_value is None:
+                    continue
+                value, wall_time = tensor_value
+                metrics[metric_name] = value
+                latest_wall_time = max(latest_wall_time or wall_time, wall_time)
 
         if latest_wall_time is None:
             return TrainingSnapshot(
@@ -195,7 +231,7 @@ class TensorboardMetricsReader:
                 event_path=event_path,
                 event_age_s=max(0.0, time.time() - event_path.stat().st_mtime),
                 status="WAITING",
-                detail="Event file exists but no scalar metrics are available yet",
+                detail="Event file exists but no readable scalar/tensor metrics are available yet",
             )
 
         age_s = max(0.0, time.time() - latest_wall_time)
@@ -231,7 +267,7 @@ class DashboardWindow:
         self.root.geometry(geometry)
         self.root.configure(bg="#0a0f1a")
         self.root.attributes("-topmost", bool(always_on_top))
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
         self.root.bind("<Escape>", lambda _event: self.close())
 
         self._build_ui()
@@ -281,7 +317,7 @@ class DashboardWindow:
         self.hero_reward = self._hero_block(shell, "EP REWARD", hero_font)
 
         grid = tk.Frame(shell, bg="#0a0f1a")
-        grid.pack(fill="x", pady=(8, 16))
+        grid.pack(fill="x", pady=(8, 16), expand=True)
 
         self.metric_boxes: dict[str, tk.Label] = {}
         metric_layout = [
@@ -426,7 +462,10 @@ class DashboardWindow:
         }.get(snapshot.status, "#e2e8f0")
 
         self.status_label.configure(text=snapshot.status, fg=status_color)
-        self.detail_label.configure(text=snapshot.detail)
+        detail = snapshot.detail
+        if snapshot.event_path is not None:
+            detail = f"{detail}\n{snapshot.event_path}"
+        self.detail_label.configure(text=detail)
         self.hero_timestep.configure(text=_format_compact_int(snapshot.metrics.get("timesteps")))
         self.hero_reward.configure(text=_format_float(snapshot.metrics.get("ep_rew_mean"), digits=3))
 
