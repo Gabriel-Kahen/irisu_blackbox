@@ -31,10 +31,10 @@ height = 480
 [env.action_grid]
 rows = 8
 cols = 8
-left = 630
-top = 255
-right = 1280
-bottom = 768
+left = 786
+top = 358
+right = 1073
+bottom = 685
 
 [env.reward]
 survival_reward = 0.01
