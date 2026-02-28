@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from irisu_blackbox.config import ActionGridConfig, RootConfig, load_config
+from irisu_blackbox.live_metrics import (
+    METRIC_TAGS,
+    dashboard_metrics_path,
+    load_dashboard_metrics,
+)
 
 try:  # pragma: no cover - depends on installed runtime packages
     from tensorboard.backend.event_processing import event_accumulator as tb_event_accumulator
@@ -17,24 +22,6 @@ except Exception as exc:  # pragma: no cover
     _TENSORBOARD_IMPORT_ERROR = exc
 else:  # pragma: no cover
     _TENSORBOARD_IMPORT_ERROR = None
-
-
-METRIC_TAGS: dict[str, str] = {
-    "timesteps": "time/total_timesteps",
-    "fps": "time/fps",
-    "iterations": "time/iterations",
-    "ep_rew_mean": "rollout/ep_rew_mean",
-    "ep_len_mean": "rollout/ep_len_mean",
-    "approx_kl": "train/approx_kl",
-    "clip_fraction": "train/clip_fraction",
-    "entropy_loss": "train/entropy_loss",
-    "explained_variance": "train/explained_variance",
-    "learning_rate": "train/learning_rate",
-    "loss": "train/loss",
-    "policy_gradient_loss": "train/policy_gradient_loss",
-    "value_loss": "train/value_loss",
-    "n_updates": "train/n_updates",
-}
 
 
 def _format_duration(seconds: float) -> str:
@@ -246,13 +233,74 @@ class TensorboardMetricsReader:
         )
 
 
+class DashboardFileReader:
+    def __init__(self, run_dir: Path) -> None:
+        self.run_dir = run_dir
+        self.metrics_path = dashboard_metrics_path(run_dir)
+
+    def read(self) -> TrainingSnapshot | None:
+        payload = load_dashboard_metrics(self.run_dir)
+        if payload is None:
+            return None
+
+        updated_at = payload.get("updated_at")
+        try:
+            updated_at_f = float(updated_at)
+        except (TypeError, ValueError):
+            updated_at_f = None
+
+        age_s = max(0.0, time.time() - updated_at_f) if updated_at_f is not None else None
+        file_status = str(payload.get("status", "live")).upper()
+        if file_status == "LIVE" and age_s is not None and age_s > 10.0:
+            status = "STALE"
+        elif file_status == "STARTING":
+            status = "WAITING"
+        elif file_status == "STOPPED":
+            status = "STOPPED"
+        else:
+            status = file_status
+
+        detail = str(payload.get("detail", "dashboard_metrics.json"))
+        return TrainingSnapshot(
+            metrics={
+                str(key): float(value)
+                for key, value in dict(payload.get("metrics", {})).items()
+                if value is not None
+            },
+            event_path=self.metrics_path,
+            event_age_s=age_s,
+            status=status,
+            detail=detail,
+        )
+
+
+class CompositeMetricsReader:
+    def __init__(self, run_dir: Path) -> None:
+        self.dashboard_reader = DashboardFileReader(run_dir)
+        self.tensorboard_reader = TensorboardMetricsReader(run_dir)
+
+    def read(self) -> TrainingSnapshot:
+        dashboard_snapshot = self.dashboard_reader.read()
+        if dashboard_snapshot is not None:
+            return dashboard_snapshot
+
+        tensorboard_snapshot = self.tensorboard_reader.read()
+        if tensorboard_snapshot.status == "WAITING":
+            metrics_path = self.dashboard_reader.metrics_path
+            tensorboard_snapshot.detail = (
+                f"No {metrics_path.name} yet. "
+                "Restart training on the latest code for true live dashboard metrics."
+            )
+        return tensorboard_snapshot
+
+
 class DashboardWindow:
     def __init__(
         self,
         *,
         cfg: RootConfig,
         run_dir: Path,
-        reader: TensorboardMetricsReader,
+        reader: CompositeMetricsReader,
         interval_s: float,
         geometry: str,
         always_on_top: bool,
@@ -457,6 +505,7 @@ class DashboardWindow:
             "LIVE": "#4ade80",
             "STALE": "#facc15",
             "WAITING": "#7dd3fc",
+            "STOPPED": "#94a3b8",
             "ERROR": "#f97316",
             "NO TENSORBOARD": "#ef4444",
         }.get(snapshot.status, "#e2e8f0")
@@ -508,7 +557,7 @@ def main() -> None:
     args = _build_arg_parser().parse_args()
     cfg = load_config(args.config)
     run_dir = _resolve_run_dir(args.run_dir)
-    reader = TensorboardMetricsReader(run_dir)
+    reader = CompositeMetricsReader(run_dir)
     dashboard = DashboardWindow(
         cfg=cfg,
         run_dir=run_dir,

@@ -151,6 +151,10 @@ This opens a separate dashboard window showing:
 - explained variance
 - static model config summary
 
+The dashboard prefers a live `dashboard_metrics.json` file written by the training process.
+If you point it at an older run that started before this feature existed, it falls back to
+TensorBoard logs, which may update sparsely on slow real-time runs.
+
 ### Irisu Menu Restart Macro (Start Click)
 
 Use a click step in `env.reset_macro` that targets the `Start` button.

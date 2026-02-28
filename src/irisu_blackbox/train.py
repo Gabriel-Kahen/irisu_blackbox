@@ -6,12 +6,13 @@ from pathlib import Path
 
 from gymnasium import spaces
 from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList, CheckpointCallback
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
 
 from irisu_blackbox.config import RootConfig, load_config
 from irisu_blackbox.factory import make_env_factory
+from irisu_blackbox.live_metrics import DashboardMetricsRecorder
 
 
 def _parse_window_titles(raw: str | None) -> list[str] | None:
@@ -80,6 +81,46 @@ def _make_model(cfg: RootConfig, vec_env: VecMonitor, run_dir: Path) -> Recurren
     )
 
 
+class DashboardMetricsCallback(BaseCallback):
+    def __init__(self, run_dir: Path) -> None:
+        super().__init__()
+        self.recorder = DashboardMetricsRecorder(run_dir)
+
+    def _on_training_start(self) -> None:
+        total_timesteps = getattr(self.model, "_total_timesteps", None)
+        self.recorder.on_training_start(
+            total_timesteps=int(total_timesteps) if total_timesteps is not None else None,
+            n_envs=int(getattr(self.training_env, "num_envs", 1)),
+        )
+
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos")
+        logger_values = getattr(self.logger, "name_to_value", {})
+        self.recorder.on_step(
+            num_timesteps=int(self.num_timesteps),
+            infos=infos,
+            logger_values=logger_values,
+        )
+        return True
+
+    def _on_rollout_end(self) -> None:
+        self.recorder.on_rollout_end()
+        logger_values = getattr(self.logger, "name_to_value", {})
+        self.recorder.on_step(
+            num_timesteps=int(self.num_timesteps),
+            infos=self.locals.get("infos"),
+            logger_values=logger_values,
+            force=True,
+        )
+
+    def _on_training_end(self) -> None:
+        logger_values = getattr(self.logger, "name_to_value", {})
+        self.recorder.on_training_end(
+            num_timesteps=int(self.num_timesteps),
+            logger_values=logger_values,
+        )
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train RecurrentPPO on Irisu black-box env")
     parser.add_argument("--config", type=Path, default=Path("configs/base.toml"))
@@ -123,12 +164,17 @@ def main() -> None:
     model = _make_model(cfg, vec_env, run_dir=run_dir)
 
     save_freq = max(1, cfg.train.checkpoint_every // cfg.train.n_envs)
-    callback = CheckpointCallback(
-        save_freq=save_freq,
-        save_path=str(checkpoints_dir),
-        name_prefix="irisu_ppo",
-        save_replay_buffer=False,
-        save_vecnormalize=False,
+    callback = CallbackList(
+        [
+            CheckpointCallback(
+                save_freq=save_freq,
+                save_path=str(checkpoints_dir),
+                name_prefix="irisu_ppo",
+                save_replay_buffer=False,
+                save_vecnormalize=False,
+            ),
+            DashboardMetricsCallback(run_dir=run_dir),
+        ]
     )
 
     model.learn(
