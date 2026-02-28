@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+import re
 
 try:
     import tomllib
@@ -517,6 +518,9 @@ def _resolve_optional_path(
     expect_dir: bool,
 ) -> str | None:
     if not value:
+        return value
+
+    if re.match(r"^[A-Za-z]:[\\/]", value) or value.startswith("\\\\"):
         return value
 
     raw = Path(value).expanduser()

@@ -124,6 +124,36 @@ def test_windows_backend_relaunches_missing_window_on_capture(monkeypatch):
         backend.close()
 
 
+def test_windows_backend_relaunches_missing_window_during_init(monkeypatch):
+    relaunched = FakeWindow("Irisu syndrome", hwnd=2)
+    state = {"windows": []}
+    _patch_windows_dependencies(monkeypatch, state)
+
+    launches: list[tuple[list[str], str | None]] = []
+
+    def fake_popen(cmd: list[str], cwd: str | None = None):
+        launches.append((cmd, cwd))
+        state["windows"] = [relaunched]
+        return object()
+
+    monkeypatch.setattr(winmod.subprocess, "Popen", fake_popen)
+
+    backend = WindowsGameBackend(
+        binding=WindowBinding(
+            title_regex="Irisu syndrome",
+            capture_region=Rect(left=10, top=20, width=30, height=40),
+            relaunch_on_missing_window=True,
+            launch_executable="C:/Users/gabek/Desktop/irisu.exe",
+            launch_workdir="C:/Users/gabek/Desktop",
+        )
+    )
+    try:
+        assert launches == [(["C:/Users/gabek/Desktop/irisu.exe"], "C:/Users/gabek/Desktop")]
+        assert backend._window is relaunched
+    finally:
+        backend.close()
+
+
 def test_windows_backend_skips_click_that_triggered_relaunch(monkeypatch):
     original = FakeWindow("Irisu syndrome", hwnd=1)
     relaunched = FakeWindow("Irisu syndrome", hwnd=2)

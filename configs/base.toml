@@ -25,10 +25,9 @@ focus_before_step = true
 relaunch_on_missing_window = true
 relaunch_timeout_s = 15.0
 relaunch_poll_s = 0.25
-# Optional explicit relaunch override if auto-detection fails:
-# launch_executable = "C:\\Path\\To\\Irisu.exe"
-# launch_workdir = "C:\\Path\\To"
-# launch_args = []
+launch_executable = "C:\\Users\\gabek\\Desktop\\irisu.exe"
+launch_workdir = "C:\\Users\\gabek\\Desktop"
+launch_args = []
 
 [env.window.capture_region]
 left = 630

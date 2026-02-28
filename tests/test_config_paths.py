@@ -84,3 +84,23 @@ def test_window_launch_paths_resolve_when_running_outside_repo(tmp_path: Path, m
     cfg = load_config(cfg_path)
     assert cfg.env.window.launch_executable == str(executable.resolve())
     assert cfg.env.window.launch_workdir == str(game_dir.resolve())
+
+
+def test_windows_absolute_launch_paths_are_preserved(tmp_path: Path):
+    cfg_path = tmp_path / "base.toml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "[env]",
+                'backend = "windows"',
+                "[env.window]",
+                'launch_executable = "C:\\\\Users\\\\gabek\\\\Desktop\\\\irisu.exe"',
+                'launch_workdir = "C:\\\\Users\\\\gabek\\\\Desktop"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_config(cfg_path)
+    assert cfg.env.window.launch_executable == "C:\\Users\\gabek\\Desktop\\irisu.exe"
+    assert cfg.env.window.launch_workdir == "C:\\Users\\gabek\\Desktop"

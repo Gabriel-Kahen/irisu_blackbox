@@ -64,7 +64,9 @@ class WindowsGameBackend(GameBackend):
         self._sct = mss.mss()
         self._explicit_launch_spec = self._binding_launch_spec()
         self._detected_launch_spec: LaunchSpec | None = None
-        self._window, _ = self._resolve_window(allow_relaunch=False)
+        self._window, _ = self._resolve_window(
+            allow_relaunch=self.binding.relaunch_on_missing_window
+        )
         self._capture_region = self.binding.capture_region
         if self._capture_region is None:
             self._capture_region = self._window_region(self._window)
