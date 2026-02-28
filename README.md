@@ -82,6 +82,7 @@ irisu-play --config configs/base.toml --model runs/mock_smoke/final_model.zip --
 - `env.score_ocr`: score region + optional tesseract path
 - `env.health_bar`: health bar detection settings (`method = "profile"` or `"scanline"`)
 - `env.game_over_on_health_missing = true` to terminate when bar disappears
+- `env.action_pause_on_health_missing_s = 3.0` to suppress agent clicks during death/reset transition
 - `env.game_over_template` can match the death-overlay screen directly
 - `env.post_game_over_delay_s` can pause briefly after death is detected before reset logic starts
 - `env.reset_ready_template` can match the menu screen before pressing `Start`

@@ -61,6 +61,7 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         self._health_missing_streak = 0
         self._last_click_time = 0.0
         self._pending_post_game_over_delay = False
+        self._action_pause_until = 0.0
 
     def _normalize_score(self, score: int | None) -> float:
         if score is None or score <= 0:
@@ -114,9 +115,20 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         self._last_frame_bgr = raw
         self._health_missing_streak = 0
         self._last_click_time = 0.0
+        self._action_pause_until = 0.0
 
         info = {"step": self._step_count, "hud": hud.as_dict()}
         return obs, info
+
+    def _arm_action_pause_on_health_missing(self) -> None:
+        pause_s = max(0.0, float(self.cfg.action_pause_on_health_missing_s))
+        if pause_s <= 0:
+            return
+        now = time.monotonic()
+        self._action_pause_until = max(self._action_pause_until, now + pause_s)
+
+    def _is_action_paused(self) -> bool:
+        return time.monotonic() < self._action_pause_until
 
     def _run_post_game_over_delay_if_needed(self) -> None:
         if not self._pending_post_game_over_delay:
@@ -177,9 +189,10 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
     def step(self, action: int):
         cmd = decode_action(int(action), self.cfg.action_grid)
         repeats = max(1, self.cfg.episode.action_repeat)
+        action_suppressed = self._is_action_paused()
 
         for _ in range(repeats):
-            if cmd is not None:
+            if cmd is not None and not action_suppressed:
                 max_cps = self.cfg.episode.max_clicks_per_second
                 if max_cps > 0:
                     min_interval = 1.0 / max_cps
@@ -219,9 +232,11 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         health_done = False
         if self.cfg.game_over_on_health_missing and self.cfg.health_bar.enabled:
             if hud.health_visible is False:
+                self._arm_action_pause_on_health_missing()
                 self._health_missing_streak += 1
             else:
                 self._health_missing_streak = 0
+                self._action_pause_until = 0.0
             health_done = self._health_missing_streak >= max(1, self.cfg.health_missing_patience)
 
         terminated = backend_done or template_done or health_done
@@ -238,6 +253,8 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
             "template_done": template_done,
             "health_done": health_done,
             "health_missing_streak": self._health_missing_streak,
+            "action_suppressed": action_suppressed,
+            "action_pause_remaining_s": max(0.0, self._action_pause_until - time.monotonic()),
             "termination_reason": (
                 "backend"
                 if backend_done

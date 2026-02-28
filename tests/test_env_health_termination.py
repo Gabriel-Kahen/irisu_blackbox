@@ -83,6 +83,29 @@ class ScriptedResetBackend(GameBackend):
         return
 
 
+class HealthPauseBackend(GameBackend):
+    def __init__(self, active_frames: list[np.ndarray]) -> None:
+        self.active_frames = active_frames
+        self.index = 0
+        self.click_count = 0
+        self.reset_calls = 0
+
+    def capture_frame(self) -> np.ndarray:
+        idx = min(self.index, len(self.active_frames) - 1)
+        self.index += 1
+        return self.active_frames[idx].copy()
+
+    def click(self, x: int, y: int, button: str = "left", hold_s: float = 0.01) -> None:
+        self.click_count += 1
+
+    def reset(self) -> None:
+        self.reset_calls += 1
+        self.index = 0
+
+    def close(self) -> None:
+        return
+
+
 def _menu_frame(show_marker: bool) -> np.ndarray:
     frame = np.zeros((64, 64, 3), dtype=np.uint8)
     if show_marker:
@@ -96,6 +119,16 @@ def _gameplay_frame() -> np.ndarray:
     frame = np.zeros((64, 64, 3), dtype=np.uint8)
     frame[0:10, 0:10] = (0, 0, 255)
     return frame
+
+
+def _health_visible_frame() -> np.ndarray:
+    frame = np.zeros((64, 64, 3), dtype=np.uint8)
+    frame[0:10, 0:10] = (0, 0, 255)
+    return frame
+
+
+def _health_missing_frame() -> np.ndarray:
+    return np.zeros((64, 64, 3), dtype=np.uint8)
 
 
 def test_env_reset_waits_for_menu_then_round_start(tmp_path: Path):
@@ -237,5 +270,89 @@ def test_env_returns_dict_observation_with_hud_features():
         assert obs["image"].dtype == np.uint8
         assert obs["hud"].shape == (4,)
         assert obs["hud"].dtype == np.float32
+    finally:
+        env.close()
+
+
+def test_env_suppresses_actions_after_health_bar_disappears():
+    cfg = EnvConfig(
+        backend="mock",
+        obs_width=64,
+        obs_height=64,
+        frame_stack=2,
+        action_grid=ActionGridConfig(rows=4, cols=4, left=0, top=0, right=64, bottom=64),
+        episode=EpisodeConfig(max_steps=10, action_repeat=1, max_clicks_per_second=0.0),
+        health_bar=HealthBarConfig(
+            enabled=True,
+            region=Rect(left=0, top=0, width=10, height=10),
+            min_visible_pixels=1,
+            column_fill_threshold=0.05,
+            smoothing_window=1,
+        ),
+        game_over_on_health_missing=True,
+        health_missing_patience=5,
+        action_pause_on_health_missing_s=3.0,
+    )
+
+    backend = HealthPauseBackend(
+        [
+            _health_visible_frame(),
+            _health_missing_frame(),
+            _health_missing_frame(),
+        ]
+    )
+    env = IrisuBlackBoxEnv(cfg=cfg, backend=backend)
+    try:
+        env.reset()
+        _, _, _, _, info_1 = env.step(1)
+        assert backend.click_count == 1
+        assert info_1["action_suppressed"] is False
+
+        _, _, _, _, info_2 = env.step(1)
+        assert backend.click_count == 1
+        assert info_2["action_suppressed"] is True
+        assert info_2["action_pause_remaining_s"] > 0.0
+    finally:
+        env.close()
+
+
+def test_env_reset_clears_action_pause():
+    cfg = EnvConfig(
+        backend="mock",
+        obs_width=64,
+        obs_height=64,
+        frame_stack=2,
+        action_grid=ActionGridConfig(rows=4, cols=4, left=0, top=0, right=64, bottom=64),
+        episode=EpisodeConfig(max_steps=10, action_repeat=1, max_clicks_per_second=0.0),
+        health_bar=HealthBarConfig(
+            enabled=True,
+            region=Rect(left=0, top=0, width=10, height=10),
+            min_visible_pixels=1,
+            column_fill_threshold=0.05,
+            smoothing_window=1,
+        ),
+        game_over_on_health_missing=True,
+        health_missing_patience=5,
+        action_pause_on_health_missing_s=3.0,
+    )
+
+    backend = HealthPauseBackend(
+        [
+            _health_visible_frame(),
+            _health_missing_frame(),
+            _health_visible_frame(),
+            _health_visible_frame(),
+        ]
+    )
+    env = IrisuBlackBoxEnv(cfg=cfg, backend=backend)
+    try:
+        env.reset()
+        env.step(1)
+        assert backend.click_count == 1
+
+        env.reset()
+        _, _, _, _, info = env.step(1)
+        assert backend.click_count == 2
+        assert info["action_suppressed"] is False
     finally:
         env.close()
