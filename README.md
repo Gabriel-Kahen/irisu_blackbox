@@ -133,20 +133,23 @@ irisu-monitor --config configs/base.toml --auto-reset
 
 ### Stream Dashboard
 
-For a stream-friendly side HUD window, run:
+For a stream-friendly side dashboard that shows RL training metrics, run:
 
 ```bash
-irisu-dashboard --config configs/base.toml --geometry 480x1080+0+0 --topmost
+irisu-dashboard --config configs/base.toml --run-dir runs/live_rgb_v1 --geometry 480x1080+0+0 --topmost
 ```
 
 This opens a separate dashboard window showing:
 
-- score
-- health bar and percentage
-- session timer
-- round timer
-- episode/reset counts
-- session best score
+- total timesteps
+- fps
+- episode reward mean
+- episode length mean
+- approx KL
+- clip fraction
+- entropy / value / policy losses
+- explained variance
+- static model config summary
 
 ### Irisu Menu Restart Macro (Start Click)
 

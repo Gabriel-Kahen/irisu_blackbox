@@ -6,9 +6,33 @@ import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 
-from irisu_blackbox.config import load_config
-from irisu_blackbox.factory import make_env_factory
-from irisu_blackbox.hud import HUDState
+from irisu_blackbox.config import ActionGridConfig, RootConfig, load_config
+
+try:  # pragma: no cover - depends on installed runtime packages
+    from tensorboard.backend.event_processing import event_accumulator as tb_event_accumulator
+except Exception as exc:  # pragma: no cover
+    tb_event_accumulator = None
+    _TENSORBOARD_IMPORT_ERROR = exc
+else:  # pragma: no cover
+    _TENSORBOARD_IMPORT_ERROR = None
+
+
+METRIC_TAGS: dict[str, str] = {
+    "timesteps": "time/total_timesteps",
+    "fps": "time/fps",
+    "iterations": "time/iterations",
+    "ep_rew_mean": "rollout/ep_rew_mean",
+    "ep_len_mean": "rollout/ep_len_mean",
+    "approx_kl": "train/approx_kl",
+    "clip_fraction": "train/clip_fraction",
+    "entropy_loss": "train/entropy_loss",
+    "explained_variance": "train/explained_variance",
+    "learning_rate": "train/learning_rate",
+    "loss": "train/loss",
+    "policy_gradient_loss": "train/policy_gradient_loss",
+    "value_loss": "train/value_loss",
+    "n_updates": "train/n_updates",
+}
 
 
 def _format_duration(seconds: float) -> str:
@@ -18,76 +42,171 @@ def _format_duration(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
-def _score_text(score: int | None) -> str:
-    if score is None:
+def _format_compact_int(value: float | int | None) -> str:
+    if value is None:
         return "--"
-    return f"{score:,}"
+    n = float(value)
+    if abs(n) >= 1_000_000_000:
+        return f"{n / 1_000_000_000:.2f}B"
+    if abs(n) >= 1_000_000:
+        return f"{n / 1_000_000:.2f}M"
+    if abs(n) >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return f"{int(round(n))}"
+
+
+def _format_float(value: float | int | None, digits: int = 4) -> str:
+    if value is None:
+        return "--"
+    return f"{float(value):.{digits}f}"
+
+
+def _format_percent(value: float | int | None, digits: int = 1) -> str:
+    if value is None:
+        return "--"
+    return f"{float(value) * 100.0:.{digits}f}%"
+
+
+def _latest_run_dir(base_dir: Path) -> Path | None:
+    if not base_dir.exists():
+        return None
+    candidates = [path for path in base_dir.iterdir() if path.is_dir()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
+
+
+def _resolve_run_dir(run_dir: Path | None) -> Path:
+    if run_dir is not None:
+        return run_dir.expanduser().resolve()
+    latest = _latest_run_dir(Path("runs").resolve())
+    if latest is None:
+        raise FileNotFoundError("No run directory found under runs/")
+    return latest
+
+
+def _policy_name(cfg: RootConfig) -> str:
+    return "MultiInputLstmPolicy" if cfg.env.hud_features.enabled else "CnnLstmPolicy"
+
+
+def _obs_text(cfg: RootConfig) -> str:
+    channels = cfg.env.frame_stack * 3
+    hud = " + HUD4" if cfg.env.hud_features.enabled else ""
+    return f"RGB {channels}x{cfg.env.obs_height}x{cfg.env.obs_width}{hud}"
+
+
+def _action_text(grid: ActionGridConfig) -> str:
+    return f"{grid.rows}x{grid.cols} ({grid.action_count} actions)"
 
 
 @dataclass(slots=True)
-class DashboardStats:
-    session_runtime_s: float
-    round_runtime_s: float
-    episode_count: int
-    reset_count: int
-    session_best_score: int
-    round_best_score: int
-    missing_streak: int
-    state: str
+class TrainingSnapshot:
+    metrics: dict[str, float]
+    event_path: Path | None
+    event_age_s: float | None
+    status: str
+    detail: str
 
 
-class SessionTracker:
-    def __init__(self, patience: int) -> None:
-        self.patience = max(1, int(patience))
-        self.session_start = time.monotonic()
-        self.round_start = self.session_start
-        self.episode_count = 0
-        self.reset_count = 0
-        self.session_best_score = 0
-        self.round_best_score = 0
-        self.missing_streak = 0
-        self._round_live = False
-        self._round_end_recorded = False
+class TensorboardMetricsReader:
+    def __init__(self, run_dir: Path) -> None:
+        self.run_dir = run_dir
+        self.tensorboard_dir = run_dir / "tensorboard"
+        self._event_path: Path | None = None
+        self._accumulator = None
 
-    def update(self, hud: HUDState, *, now: float | None = None) -> DashboardStats:
-        now = time.monotonic() if now is None else now
+    def _latest_event_file(self) -> Path | None:
+        if not self.tensorboard_dir.exists():
+            return None
+        event_files = sorted(
+            self.tensorboard_dir.rglob("events.out.tfevents.*"),
+            key=lambda path: path.stat().st_mtime,
+        )
+        return event_files[-1] if event_files else None
 
-        if hud.score is not None:
-            self.session_best_score = max(self.session_best_score, int(hud.score))
-            self.round_best_score = max(self.round_best_score, int(hud.score))
+    def _ensure_accumulator(self, event_path: Path):
+        if tb_event_accumulator is None:
+            return None
+        if self._event_path == event_path and self._accumulator is not None:
+            return self._accumulator
+        self._event_path = event_path
+        self._accumulator = tb_event_accumulator.EventAccumulator(
+            str(event_path),
+            size_guidance={"scalars": 0},
+        )
+        return self._accumulator
 
-        if hud.health_visible is True:
-            self.missing_streak = 0
-            self._round_end_recorded = False
-            if not self._round_live:
-                self._round_live = True
-                self.episode_count += 1
-                self.round_start = now
-                self.round_best_score = max(0, int(hud.score or 0))
-            state = "LIVE"
-            round_runtime_s = now - self.round_start
-        else:
-            self.missing_streak += 1
-            round_runtime_s = now - self.round_start if self._round_live else 0.0
-            if self._round_live and self.missing_streak >= self.patience:
-                if not self._round_end_recorded:
-                    self.reset_count += 1
-                    self._round_end_recorded = True
-                self._round_live = False
-                self.round_best_score = 0
-                state = "RESETTING"
-            else:
-                state = "WAITING" if not self._round_live else "TRANSITION"
+    def read(self) -> TrainingSnapshot:
+        if tb_event_accumulator is None:
+            return TrainingSnapshot(
+                metrics={},
+                event_path=None,
+                event_age_s=None,
+                status="NO TENSORBOARD",
+                detail=str(_TENSORBOARD_IMPORT_ERROR),
+            )
 
-        return DashboardStats(
-            session_runtime_s=now - self.session_start,
-            round_runtime_s=max(0.0, round_runtime_s),
-            episode_count=self.episode_count,
-            reset_count=self.reset_count,
-            session_best_score=self.session_best_score,
-            round_best_score=self.round_best_score,
-            missing_streak=self.missing_streak,
-            state=state,
+        event_path = self._latest_event_file()
+        if event_path is None:
+            detail = (
+                f"Waiting for logs in {self.tensorboard_dir}"
+                if self.tensorboard_dir.exists()
+                else f"Missing tensorboard dir: {self.tensorboard_dir}"
+            )
+            return TrainingSnapshot(
+                metrics={},
+                event_path=None,
+                event_age_s=None,
+                status="WAITING",
+                detail=detail,
+            )
+
+        accumulator = self._ensure_accumulator(event_path)
+        try:
+            accumulator.Reload()
+            scalar_tags = set(accumulator.Tags().get("scalars", []))
+        except Exception as exc:
+            return TrainingSnapshot(
+                metrics={},
+                event_path=event_path,
+                event_age_s=max(0.0, time.time() - event_path.stat().st_mtime),
+                status="ERROR",
+                detail=f"Failed to read event file: {exc}",
+            )
+
+        metrics: dict[str, float] = {}
+        latest_wall_time: float | None = None
+        for metric_name, tag in METRIC_TAGS.items():
+            if tag not in scalar_tags:
+                continue
+            try:
+                events = accumulator.Scalars(tag)
+            except Exception:
+                continue
+            if not events:
+                continue
+            latest = events[-1]
+            metrics[metric_name] = float(latest.value)
+            latest_wall_time = max(latest_wall_time or latest.wall_time, latest.wall_time)
+
+        if latest_wall_time is None:
+            return TrainingSnapshot(
+                metrics={},
+                event_path=event_path,
+                event_age_s=max(0.0, time.time() - event_path.stat().st_mtime),
+                status="WAITING",
+                detail="Event file exists but no scalar metrics are available yet",
+            )
+
+        age_s = max(0.0, time.time() - latest_wall_time)
+        status = "LIVE" if age_s <= 20.0 else "STALE"
+        detail = event_path.parent.name
+        return TrainingSnapshot(
+            metrics=metrics,
+            event_path=event_path,
+            event_age_s=age_s,
+            status=status,
+            detail=detail,
         )
 
 
@@ -95,19 +214,22 @@ class DashboardWindow:
     def __init__(
         self,
         *,
-        env,
+        cfg: RootConfig,
+        run_dir: Path,
+        reader: TensorboardMetricsReader,
         interval_s: float,
-        patience: int,
         geometry: str,
         always_on_top: bool,
     ) -> None:
-        self.env = env
-        self.interval_ms = max(50, int(interval_s * 1000.0))
-        self.tracker = SessionTracker(patience=patience)
+        self.cfg = cfg
+        self.run_dir = run_dir
+        self.reader = reader
+        self.interval_ms = max(200, int(interval_s * 1000.0))
+
         self.root = tk.Tk()
-        self.root.title("Irisu Training HUD")
+        self.root.title("Irisu RL Dashboard")
         self.root.geometry(geometry)
-        self.root.configure(bg="#0b1020")
+        self.root.configure(bg="#0a0f1a")
         self.root.attributes("-topmost", bool(always_on_top))
         self.root.resizable(False, False)
         self.root.bind("<Escape>", lambda _event: self.close())
@@ -116,187 +238,206 @@ class DashboardWindow:
 
     def _build_ui(self) -> None:
         title_font = ("Consolas", 24, "bold")
-        big_font = ("Consolas", 36, "bold")
-        medium_font = ("Consolas", 18, "bold")
-        small_font = ("Consolas", 14)
+        hero_font = ("Consolas", 34, "bold")
+        metric_title_font = ("Consolas", 12, "bold")
+        metric_value_font = ("Consolas", 18, "bold")
+        small_font = ("Consolas", 12)
 
-        header = tk.Frame(self.root, bg="#0b1020")
-        header.pack(fill="x", padx=20, pady=(18, 8))
+        shell = tk.Frame(self.root, bg="#0a0f1a")
+        shell.pack(fill="both", expand=True, padx=20, pady=18)
 
         tk.Label(
-            header,
-            text="IRISU TRAINING HUD",
-            bg="#0b1020",
-            fg="#f3f6ff",
+            shell,
+            text="IRISU RL DASHBOARD",
+            bg="#0a0f1a",
+            fg="#f8fafc",
             font=title_font,
             anchor="w",
         ).pack(fill="x")
 
-        self.state_label = tk.Label(
-            header,
+        self.status_label = tk.Label(
+            shell,
             text="WAITING",
-            bg="#0b1020",
+            bg="#0a0f1a",
             fg="#7dd3fc",
-            font=medium_font,
+            font=("Consolas", 18, "bold"),
             anchor="w",
         )
-        self.state_label.pack(fill="x", pady=(6, 0))
+        self.status_label.pack(fill="x", pady=(6, 2))
 
-        stats = tk.Frame(self.root, bg="#0b1020")
-        stats.pack(fill="both", expand=True, padx=20, pady=(18, 0))
-
-        self.score_value = tk.Label(
-            stats,
-            text="--",
-            bg="#0b1020",
-            fg="#f8fafc",
-            font=big_font,
+        self.detail_label = tk.Label(
+            shell,
+            text=str(self.run_dir),
+            bg="#0a0f1a",
+            fg="#94a3b8",
+            font=small_font,
             anchor="w",
+            justify="left",
+            wraplength=430,
         )
-        self._stat_row(stats, "SCORE", self.score_value, value_pady=(0, 18))
+        self.detail_label.pack(fill="x", pady=(0, 18))
 
-        self.health_value = tk.Label(
-            stats,
-            text="--",
-            bg="#0b1020",
-            fg="#f8fafc",
-            font=big_font,
-            anchor="w",
-        )
-        self._stat_row(stats, "HEALTH", self.health_value, value_pady=(0, 10))
+        self.hero_timestep = self._hero_block(shell, "TIMESTEPS", hero_font)
+        self.hero_reward = self._hero_block(shell, "EP REWARD", hero_font)
 
-        self.health_canvas = tk.Canvas(
-            stats,
-            width=420,
-            height=28,
+        grid = tk.Frame(shell, bg="#0a0f1a")
+        grid.pack(fill="x", pady=(8, 16))
+
+        self.metric_boxes: dict[str, tk.Label] = {}
+        metric_layout = [
+            ("fps", "FPS"),
+            ("iterations", "ITERATIONS"),
+            ("n_updates", "UPDATES"),
+            ("ep_len_mean", "EP LENGTH"),
+            ("approx_kl", "APPROX KL"),
+            ("clip_fraction", "CLIP FRAC"),
+            ("entropy_loss", "ENTROPY"),
+            ("explained_variance", "EXPLAINED VAR"),
+            ("policy_gradient_loss", "POLICY LOSS"),
+            ("value_loss", "VALUE LOSS"),
+            ("loss", "TOTAL LOSS"),
+            ("learning_rate", "LR"),
+        ]
+        for idx, (key, title) in enumerate(metric_layout):
+            box = tk.Frame(
+                grid,
+                bg="#101827",
+                highlightthickness=1,
+                highlightbackground="#23304d",
+                bd=0,
+            )
+            box.grid(row=idx // 2, column=idx % 2, sticky="nsew", padx=(0, 12), pady=(0, 12))
+            grid.grid_columnconfigure(idx % 2, weight=1)
+
+            tk.Label(
+                box,
+                text=title,
+                bg="#101827",
+                fg="#94a3b8",
+                font=metric_title_font,
+                anchor="w",
+            ).pack(fill="x", padx=12, pady=(10, 2))
+            value_label = tk.Label(
+                box,
+                text="--",
+                bg="#101827",
+                fg="#f8fafc",
+                font=metric_value_font,
+                anchor="w",
+            )
+            value_label.pack(fill="x", padx=12, pady=(0, 10))
+            self.metric_boxes[key] = value_label
+
+        config_box = tk.Frame(
+            shell,
             bg="#101827",
             highlightthickness=1,
             highlightbackground="#23304d",
             bd=0,
         )
-        self.health_canvas.pack(anchor="w", pady=(0, 22))
+        config_box.pack(fill="x", pady=(4, 16))
 
-        grid = tk.Frame(stats, bg="#0b1020")
-        grid.pack(fill="x", pady=(0, 18))
+        tk.Label(
+            config_box,
+            text="MODEL CONFIG",
+            bg="#101827",
+            fg="#94a3b8",
+            font=metric_title_font,
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=(10, 4))
 
-        self.runtime_value = self._kv_label(grid, "SESSION")
-        self.round_value = self._kv_label(grid, "ROUND")
-        self.episodes_value = self._kv_label(grid, "EPISODES")
-        self.resets_value = self._kv_label(grid, "RESETS")
-        self.session_best_value = self._kv_label(grid, "BEST SCORE")
-        self.round_best_value = self._kv_label(grid, "ROUND BEST")
-        self.missing_value = self._kv_label(grid, "MISS STREAK")
+        static_lines = [
+            f"Policy: {_policy_name(self.cfg)}",
+            f"Obs: {_obs_text(self.cfg)}",
+            f"Grid: {_action_text(self.cfg.env.action_grid)}",
+            f"LR: {_format_float(self.cfg.train.learning_rate, 5)}   Gamma: {_format_float(self.cfg.train.gamma, 3)}",
+            f"Rollout: {self.cfg.train.n_steps}   Batch: {self.cfg.train.batch_size}   Envs: {self.cfg.train.n_envs}",
+        ]
+        for line in static_lines:
+            tk.Label(
+                config_box,
+                text=line,
+                bg="#101827",
+                fg="#e2e8f0",
+                font=small_font,
+                anchor="w",
+                justify="left",
+            ).pack(fill="x", padx=12, pady=(0, 6))
 
-        for idx, child in enumerate(grid.winfo_children()):
-            child.grid(row=idx // 2, column=idx % 2, sticky="w", padx=(0, 28), pady=(0, 14))
-
-        footer = tk.Label(
-            self.root,
+        self.footer_label = tk.Label(
+            shell,
             text="ESC to close",
-            bg="#0b1020",
+            bg="#0a0f1a",
             fg="#94a3b8",
             font=small_font,
             anchor="w",
         )
-        footer.pack(fill="x", padx=20, pady=(0, 18))
+        self.footer_label.pack(fill="x")
 
-    def _stat_row(
-        self,
-        parent: tk.Widget,
-        title: str,
-        value_widget: tk.Label,
-        *,
-        value_pady: tuple[int, int] = (0, 12),
-    ) -> None:
-        tk.Label(
+    def _hero_block(self, parent: tk.Widget, title: str, value_font) -> tk.Label:
+        box = tk.Frame(
             parent,
-            text=title,
-            bg="#0b1020",
-            fg="#94a3b8",
-            font=("Consolas", 14, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        value_widget.pack(fill="x", pady=value_pady)
-
-    def _kv_label(self, parent: tk.Widget, title: str) -> tk.Frame:
-        frame = tk.Frame(parent, bg="#0b1020")
+            bg="#101827",
+            highlightthickness=1,
+            highlightbackground="#23304d",
+            bd=0,
+        )
+        box.pack(fill="x", pady=(0, 14))
         tk.Label(
-            frame,
+            box,
             text=title,
-            bg="#0b1020",
+            bg="#101827",
             fg="#94a3b8",
             font=("Consolas", 12, "bold"),
             anchor="w",
-        ).pack(fill="x")
+        ).pack(fill="x", padx=12, pady=(10, 2))
         value = tk.Label(
-            frame,
+            box,
             text="--",
-            bg="#0b1020",
+            bg="#101827",
             fg="#f8fafc",
-            font=("Consolas", 16, "bold"),
+            font=value_font,
             anchor="w",
         )
-        value.pack(fill="x", pady=(2, 0))
-        frame.value_label = value  # type: ignore[attr-defined]
-        return frame
+        value.pack(fill="x", padx=12, pady=(0, 10))
+        return value
 
-    def _set_kv(self, holder: tk.Frame, text: str) -> None:
-        holder.value_label.configure(text=text)  # type: ignore[attr-defined]
-
-    def _draw_health_bar(self, percent: float | None, visible: bool | None) -> None:
-        self.health_canvas.delete("all")
-        width = int(self.health_canvas["width"])
-        height = int(self.health_canvas["height"])
-        self.health_canvas.create_rectangle(0, 0, width, height, fill="#111827", outline="")
-
-        if visible is not True or percent is None:
-            self.health_canvas.create_text(
-                width // 2,
-                height // 2,
-                text="NO HEALTH BAR",
-                fill="#fca5a5",
-                font=("Consolas", 12, "bold"),
-            )
-            return
-
-        pct = max(0.0, min(1.0, float(percent)))
-        fill_w = int(width * pct)
-        color = "#22c55e" if pct >= 0.6 else "#eab308" if pct >= 0.3 else "#ef4444"
-        self.health_canvas.create_rectangle(0, 0, fill_w, height, fill=color, outline="")
-        self.health_canvas.create_text(
-            width // 2,
-            height // 2,
-            text=f"{pct * 100.0:5.1f}%",
-            fill="#f8fafc",
-            font=("Consolas", 12, "bold"),
-        )
+    def _metric_text(self, key: str, metrics: dict[str, float]) -> str:
+        value = metrics.get(key)
+        if key in {"fps", "iterations", "n_updates", "ep_len_mean"}:
+            return _format_compact_int(value)
+        if key == "clip_fraction":
+            return _format_percent(value, digits=1)
+        if key == "learning_rate":
+            return _format_float(value, digits=6)
+        if key == "explained_variance":
+            return _format_float(value, digits=3)
+        return _format_float(value, digits=4)
 
     def refresh(self) -> None:
-        frame = self.env.backend.capture_frame()
-        hud = self.env.hud_reader.read(frame)
-        stats = self.tracker.update(hud)
+        snapshot = self.reader.read()
 
-        state_color = {
+        status_color = {
             "LIVE": "#4ade80",
-            "RESETTING": "#f97316",
-            "TRANSITION": "#facc15",
+            "STALE": "#facc15",
             "WAITING": "#7dd3fc",
-        }.get(stats.state, "#e2e8f0")
-        self.state_label.configure(text=stats.state, fg=state_color)
-        self.score_value.configure(text=_score_text(hud.score))
-        if hud.health_percent is None:
-            self.health_value.configure(text="--")
-        else:
-            self.health_value.configure(text=f"{hud.health_percent * 100.0:5.1f}%")
-        self._draw_health_bar(hud.health_percent, hud.health_visible)
+            "ERROR": "#f97316",
+            "NO TENSORBOARD": "#ef4444",
+        }.get(snapshot.status, "#e2e8f0")
 
-        self._set_kv(self.runtime_value, _format_duration(stats.session_runtime_s))
-        self._set_kv(self.round_value, _format_duration(stats.round_runtime_s))
-        self._set_kv(self.episodes_value, str(stats.episode_count))
-        self._set_kv(self.resets_value, str(stats.reset_count))
-        self._set_kv(self.session_best_value, _score_text(stats.session_best_score))
-        self._set_kv(self.round_best_value, _score_text(stats.round_best_score))
-        self._set_kv(self.missing_value, str(stats.missing_streak))
+        self.status_label.configure(text=snapshot.status, fg=status_color)
+        self.detail_label.configure(text=snapshot.detail)
+        self.hero_timestep.configure(text=_format_compact_int(snapshot.metrics.get("timesteps")))
+        self.hero_reward.configure(text=_format_float(snapshot.metrics.get("ep_rew_mean"), digits=3))
+
+        for key, label in self.metric_boxes.items():
+            label.configure(text=self._metric_text(key, snapshot.metrics))
+
+        age_text = "--"
+        if snapshot.event_age_s is not None:
+            age_text = _format_duration(snapshot.event_age_s)
+        event_name = snapshot.event_path.name if snapshot.event_path is not None else "none"
+        self.footer_label.configure(text=f"Event age: {age_text}   Source: {event_name}   ESC to close")
 
         self.root.after(self.interval_ms, self.refresh)
 
@@ -306,18 +447,19 @@ class DashboardWindow:
         self.root.mainloop()
 
     def close(self) -> None:
-        try:
-            self.env.close()
-        finally:
-            self.root.destroy()
+        self.root.destroy()
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Show a stream-friendly Irisu training HUD window")
+    parser = argparse.ArgumentParser(description="Show a stream-friendly Irisu RL metrics dashboard")
     parser.add_argument("--config", type=Path, default=Path("configs/base.toml"))
-    parser.add_argument("--window-title", type=str, default=None)
-    parser.add_argument("--interval-s", type=float, default=0.2)
-    parser.add_argument("--patience", type=int, default=None)
+    parser.add_argument(
+        "--run-dir",
+        type=Path,
+        default=None,
+        help="Training run directory. Defaults to the newest subdirectory under runs/",
+    )
+    parser.add_argument("--interval-s", type=float, default=1.0)
     parser.add_argument("--geometry", type=str, default="480x1080+0+0")
     parser.add_argument("--topmost", action="store_true")
     return parser
@@ -326,16 +468,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = _build_arg_parser().parse_args()
     cfg = load_config(args.config)
-    cfg.env.window.focus_before_step = False
-
-    window_titles = [args.window_title] if args.window_title else None
-    env = make_env_factory(cfg, rank=0, seed=cfg.train.seed, window_titles=window_titles)()
-
-    patience = args.patience if args.patience is not None else cfg.env.health_missing_patience
+    run_dir = _resolve_run_dir(args.run_dir)
+    reader = TensorboardMetricsReader(run_dir)
     dashboard = DashboardWindow(
-        env=env,
+        cfg=cfg,
+        run_dir=run_dir,
+        reader=reader,
         interval_s=args.interval_s,
-        patience=patience,
         geometry=args.geometry,
         always_on_top=args.topmost,
     )

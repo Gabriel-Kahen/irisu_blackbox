@@ -1,5 +1,13 @@
-from irisu_blackbox.dashboard import SessionTracker, _format_duration
-from irisu_blackbox.hud import HUDState
+from pathlib import Path
+
+from irisu_blackbox.dashboard import (
+    _format_compact_int,
+    _format_duration,
+    _format_percent,
+    _latest_run_dir,
+    _obs_text,
+)
+from irisu_blackbox.config import RootConfig
 
 
 def test_format_duration():
@@ -7,32 +15,37 @@ def test_format_duration():
     assert _format_duration(3661) == "01:01:01"
 
 
-def test_session_tracker_counts_rounds_and_resets():
-    tracker = SessionTracker(patience=2)
+def test_format_helpers():
+    assert _format_compact_int(950) == "950"
+    assert _format_compact_int(1_200) == "1.2K"
+    assert _format_compact_int(2_500_000) == "2.50M"
+    assert _format_percent(0.125, digits=1) == "12.5%"
 
-    stats = tracker.update(HUDState(score=0, health_percent=None, health_visible=False), now=10.0)
-    assert stats.state == "WAITING"
-    assert stats.episode_count == 0
 
-    stats = tracker.update(HUDState(score=25, health_percent=0.8, health_visible=True), now=11.0)
-    assert stats.state == "LIVE"
-    assert stats.episode_count == 1
-    assert stats.round_best_score == 25
+def test_latest_run_dir_picks_newest(tmp_path: Path):
+    older = tmp_path / "older"
+    newer = tmp_path / "newer"
+    older.mkdir()
+    newer.mkdir()
 
-    stats = tracker.update(HUDState(score=100, health_percent=0.6, health_visible=True), now=12.0)
-    assert stats.state == "LIVE"
-    assert stats.session_best_score == 100
-    assert stats.round_best_score == 100
+    older_time = 1_700_000_000
+    newer_time = older_time + 100
+    older.touch()
+    newer.touch()
 
-    stats = tracker.update(HUDState(score=None, health_percent=None, health_visible=False), now=13.0)
-    assert stats.state == "TRANSITION"
-    assert stats.reset_count == 0
+    import os
 
-    stats = tracker.update(HUDState(score=None, health_percent=None, health_visible=False), now=14.0)
-    assert stats.state == "RESETTING"
-    assert stats.reset_count == 1
+    os.utime(older, (older_time, older_time))
+    os.utime(newer, (newer_time, newer_time))
 
-    stats = tracker.update(HUDState(score=5, health_percent=0.9, health_visible=True), now=15.0)
-    assert stats.state == "LIVE"
-    assert stats.episode_count == 2
-    assert stats.round_best_score == 5
+    assert _latest_run_dir(tmp_path) == newer
+
+
+def test_obs_text_describes_rgb_stack():
+    cfg = RootConfig()
+    cfg.env.frame_stack = 4
+    cfg.env.obs_height = 96
+    cfg.env.obs_width = 96
+    cfg.env.hud_features.enabled = True
+
+    assert _obs_text(cfg) == "RGB 12x96x96 + HUD4"
