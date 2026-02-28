@@ -118,6 +118,12 @@ irisu-calibrate --config configs/base.toml --out grid_overlay.png
 irisu-train --config configs/base.toml --run-dir runs/live_01
 ```
 
+Resume from the latest saved checkpoint in an existing run directory:
+
+```bash
+irisu-train --config configs/base.toml --run-dir runs/live_01 --resume-latest
+```
+
 ### Live HUD Monitor
 
 Use this while tuning score/health regions:

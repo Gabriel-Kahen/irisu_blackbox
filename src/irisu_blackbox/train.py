@@ -10,6 +10,7 @@ from stable_baselines3.common.callbacks import BaseCallback, CallbackList, Check
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
 
+from irisu_blackbox.checkpoints import find_latest_resume_path
 from irisu_blackbox.config import RootConfig, load_config
 from irisu_blackbox.factory import make_env_factory
 from irisu_blackbox.live_metrics import DashboardMetricsRecorder
@@ -61,6 +62,20 @@ def _make_model(cfg: RootConfig, vec_env: VecMonitor, run_dir: Path) -> Recurren
         if isinstance(vec_env.observation_space, spaces.Dict)
         else "CnnLstmPolicy"
     )
+
+def _load_or_make_model(
+    cfg: RootConfig,
+    vec_env: VecMonitor,
+    run_dir: Path,
+    resume_from: Path | None = None,
+) -> tuple[RecurrentPPO, bool]:
+    if resume_from is None:
+        return _make_model(cfg, vec_env, run_dir=run_dir), False
+
+    model = RecurrentPPO.load(str(resume_from), env=vec_env, device=cfg.train.device)
+    model.tensorboard_log = str(run_dir / "tensorboard")
+    model.verbose = 1
+    return model, True
 
     return RecurrentPPO(
         policy=policy,
@@ -134,6 +149,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--total-timesteps", type=int, default=None)
     parser.add_argument("--n-envs", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help="Resume training from a specific .zip checkpoint/model path",
+    )
+    parser.add_argument(
+        "--resume-latest",
+        action="store_true",
+        help="Resume training from the latest checkpoint in --run-dir/checkpoints",
+    )
     return parser
 
 
@@ -149,6 +175,9 @@ def _apply_overrides(cfg: RootConfig, args: argparse.Namespace) -> RootConfig:
 
 def main() -> None:
     args = _build_arg_parser().parse_args()
+    if args.resume_from is not None and args.resume_latest:
+        raise SystemExit("Use only one of --resume-from or --resume-latest")
+
     cfg = load_config(args.config)
     cfg = _apply_overrides(cfg, args)
     window_titles = _parse_window_titles(args.window_titles)
@@ -161,7 +190,23 @@ def main() -> None:
     set_random_seed(cfg.train.seed)
 
     vec_env = _make_vec_env(cfg, window_titles=window_titles)
-    model = _make_model(cfg, vec_env, run_dir=run_dir)
+    resume_path: Path | None = None
+    if args.resume_from is not None:
+        resume_path = args.resume_from.expanduser().resolve()
+        if not resume_path.exists():
+            vec_env.close()
+            raise SystemExit(f"Resume checkpoint not found: {resume_path}")
+    elif args.resume_latest:
+        resume_path = find_latest_resume_path(run_dir)
+        if resume_path is None:
+            vec_env.close()
+            raise SystemExit(
+                f"No checkpoint or final model found under: {run_dir / 'checkpoints'}"
+            )
+
+    if resume_path is not None:
+        print(f"Resuming from {resume_path}")
+    model, resumed = _load_or_make_model(cfg, vec_env, run_dir=run_dir, resume_from=resume_path)
 
     save_freq = max(1, cfg.train.checkpoint_every // cfg.train.n_envs)
     callback = CallbackList(
@@ -181,6 +226,7 @@ def main() -> None:
         total_timesteps=cfg.train.total_timesteps,
         callback=callback,
         progress_bar=True,
+        reset_num_timesteps=not resumed,
     )
     model.save(str(run_dir / "final_model"))
     vec_env.close()
