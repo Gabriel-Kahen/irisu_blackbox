@@ -360,7 +360,7 @@ class EnvConfig:
     health_bar: HealthBarConfig = field(default_factory=HealthBarConfig)
     game_over_on_health_missing: bool = False
     health_missing_patience: int = 3
-    action_pause_on_health_missing_s: float = 3.0
+    action_pause_on_health_missing_s: float = 1.0
     game_over_template: str | None = None
     game_over_threshold: float = 0.9
     post_game_over_delay_s: float = 1.0

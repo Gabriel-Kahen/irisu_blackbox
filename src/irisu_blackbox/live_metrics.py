@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from collections import deque
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
@@ -35,14 +36,34 @@ def load_dashboard_metrics(run_dir: Path) -> dict[str, Any] | None:
     path = dashboard_metrics_path(run_dir)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, JSONDecodeError):
+        return None
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    tmp_path.replace(path)
+    payload_text = json.dumps(payload, indent=2, sort_keys=True)
+    last_error: OSError | None = None
+
+    for _ in range(10):
+        try:
+            tmp_path.write_text(payload_text, encoding="utf-8")
+            try:
+                tmp_path.replace(path)
+            except PermissionError:
+                # Windows can reject os.replace when another process is briefly reading
+                # the destination file. Fall back to direct overwrite and retry on failure.
+                path.write_text(payload_text, encoding="utf-8")
+            return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(0.05)
+
+    if last_error is not None:
+        raise last_error
 
 
 class DashboardMetricsRecorder:
@@ -160,5 +181,9 @@ class DashboardMetricsRecorder:
             "n_envs": self.n_envs,
             "metrics": metrics,
         }
-        _atomic_write_json(self.path, payload)
+        try:
+            _atomic_write_json(self.path, payload)
+        except OSError:
+            # Dashboard sidecar writes are best-effort and must never kill training.
+            return
         self.last_write_time = now

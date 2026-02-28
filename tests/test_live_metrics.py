@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import pytest
+
+import irisu_blackbox.live_metrics as live_metrics
 from irisu_blackbox.live_metrics import (
     DashboardMetricsRecorder,
     dashboard_metrics_path,
@@ -32,3 +35,27 @@ def test_dashboard_metrics_recorder_writes_file(tmp_path: Path):
     assert payload["metrics"]["ep_rew_mean"] == 1.25
     assert payload["metrics"]["ep_len_mean"] == 42.0
     assert payload["metrics"]["approx_kl"] == 0.01
+
+
+def test_dashboard_metrics_recorder_ignores_write_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    recorder = DashboardMetricsRecorder(tmp_path, flush_interval_s=0.0, episode_window=5)
+
+    def _boom(path, payload):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(live_metrics, "_atomic_write_json", _boom)
+
+    recorder.on_training_start(total_timesteps=1000, n_envs=1)
+    recorder.on_step(
+        num_timesteps=10,
+        infos=[],
+        logger_values={},
+        force=True,
+    )
+
+
+def test_load_dashboard_metrics_returns_none_for_partial_json(tmp_path: Path):
+    path = dashboard_metrics_path(tmp_path)
+    path.write_text("{", encoding="utf-8")
+
+    assert load_dashboard_metrics(tmp_path) is None
