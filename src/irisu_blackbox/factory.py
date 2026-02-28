@@ -47,6 +47,12 @@ def _make_backend(cfg: EnvConfig, rank: int, seed: int):
             window_index=cfg.window.window_index,
             capture_region=cfg.window.capture_region,
             focus_before_step=cfg.window.focus_before_step,
+            relaunch_on_missing_window=cfg.window.relaunch_on_missing_window,
+            relaunch_timeout_s=cfg.window.relaunch_timeout_s,
+            relaunch_poll_s=cfg.window.relaunch_poll_s,
+            launch_executable=cfg.window.launch_executable,
+            launch_args=tuple(cfg.window.launch_args),
+            launch_workdir=cfg.window.launch_workdir,
         )
         return WindowsGameBackend(binding=binding, reset_macro=cfg.reset_macro)
 

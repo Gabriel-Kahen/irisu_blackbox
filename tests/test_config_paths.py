@@ -51,3 +51,36 @@ def test_template_dir_resolves_when_running_outside_repo(tmp_path: Path, monkeyp
 
     cfg = load_config(cfg_path)
     assert cfg.env.score_ocr.template_dir == str(template_dir.resolve())
+
+
+def test_window_launch_paths_resolve_when_running_outside_repo(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    config_dir = repo / "configs"
+    game_dir = repo / "game"
+    executable = game_dir / "Irisu.exe"
+
+    config_dir.mkdir(parents=True)
+    game_dir.mkdir(parents=True)
+    executable.write_text("", encoding="utf-8")
+
+    cfg_path = config_dir / "base.toml"
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "[env]",
+                'backend = "windows"',
+                "[env.window]",
+                'launch_executable = "game/Irisu.exe"',
+                'launch_workdir = "game"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    outside = tmp_path / "outside"
+    outside.mkdir(parents=True)
+    monkeypatch.chdir(outside)
+
+    cfg = load_config(cfg_path)
+    assert cfg.env.window.launch_executable == str(executable.resolve())
+    assert cfg.env.window.launch_workdir == str(game_dir.resolve())

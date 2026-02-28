@@ -328,6 +328,12 @@ class WindowConfig:
     window_index: int = 0
     capture_region: Rect | None = None
     focus_before_step: bool = False
+    relaunch_on_missing_window: bool = True
+    relaunch_timeout_s: float = 15.0
+    relaunch_poll_s: float = 0.25
+    launch_executable: str | None = None
+    launch_args: list[str] = field(default_factory=list)
+    launch_workdir: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "WindowConfig":
@@ -340,6 +346,27 @@ class WindowConfig:
             window_index=int(data.get("window_index", defaults.window_index)),
             capture_region=Rect.from_dict(capture_raw) if capture_raw else None,
             focus_before_step=bool(data.get("focus_before_step", defaults.focus_before_step)),
+            relaunch_on_missing_window=bool(
+                data.get(
+                    "relaunch_on_missing_window",
+                    defaults.relaunch_on_missing_window,
+                )
+            ),
+            relaunch_timeout_s=float(
+                data.get("relaunch_timeout_s", defaults.relaunch_timeout_s)
+            ),
+            relaunch_poll_s=float(data.get("relaunch_poll_s", defaults.relaunch_poll_s)),
+            launch_executable=(
+                str(data["launch_executable"])
+                if data.get("launch_executable") is not None
+                else defaults.launch_executable
+            ),
+            launch_args=[str(item) for item in data.get("launch_args", defaults.launch_args)],
+            launch_workdir=(
+                str(data["launch_workdir"])
+                if data.get("launch_workdir") is not None
+                else defaults.launch_workdir
+            ),
         )
 
 
@@ -530,6 +557,16 @@ def load_config(path: str | Path) -> RootConfig:
     )
     cfg.env.score_ocr.template_dir = _resolve_optional_path(
         cfg.env.score_ocr.template_dir,
+        config_path=path_obj,
+        expect_dir=True,
+    )
+    cfg.env.window.launch_executable = _resolve_optional_path(
+        cfg.env.window.launch_executable,
+        config_path=path_obj,
+        expect_dir=False,
+    )
+    cfg.env.window.launch_workdir = _resolve_optional_path(
+        cfg.env.window.launch_workdir,
         config_path=path_obj,
         expect_dir=True,
     )
