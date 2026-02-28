@@ -41,10 +41,10 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         self.action_space = spaces.Discrete(self.cfg.action_grid.action_count)
         self._use_hud_features = bool(self.cfg.hud_features.enabled)
         frame_space = spaces.Box(
-            low=0.0,
-            high=1.0,
-            shape=(self.cfg.frame_stack, self.cfg.obs_height, self.cfg.obs_width),
-            dtype=np.float32,
+            low=0,
+            high=255,
+            shape=(self.cfg.frame_stack * 3, self.cfg.obs_height, self.cfg.obs_width),
+            dtype=np.uint8,
         )
         if self._use_hud_features:
             self.observation_space = spaces.Dict(
@@ -98,11 +98,12 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         self.backend.reset()
         self.hud_reader.reset()
         raw, hud = self._wait_for_round_start()
-        processed = self.frame_processor.preprocess(raw)
-        image_obs = self.frame_processor.reset(processed)
+        reward_frame = self.frame_processor.preprocess(raw)
+        image_frame = self.frame_processor.preprocess_observation(raw)
+        image_obs = self.frame_processor.reset(image_frame)
         obs = self._build_observation(image_obs, hud)
         self.reward_shaper.reset(
-            processed,
+            reward_frame,
             raw,
             observed_score=hud.score,
             observed_health_percent=hud.health_percent,
@@ -198,12 +199,13 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
 
         raw = self.backend.capture_frame()
         hud = self.hud_reader.read(raw)
-        processed = self.frame_processor.preprocess(raw)
-        image_obs = self.frame_processor.push(processed)
+        reward_frame = self.frame_processor.preprocess(raw)
+        image_frame = self.frame_processor.preprocess_observation(raw)
+        image_obs = self.frame_processor.push(image_frame)
         obs = self._build_observation(image_obs, hud)
 
         reward, reward_terms = self.reward_shaper.step(
-            processed,
+            reward_frame,
             raw,
             observed_score=hud.score,
             observed_health_percent=hud.health_percent,

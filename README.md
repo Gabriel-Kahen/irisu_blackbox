@@ -6,7 +6,7 @@ This repository is a practical baseline for training an RL agent against **unmod
 - simulated mouse clicks
 - no internal game-state access
 
-It is built around a Gymnasium environment plus `RecurrentPPO`. By default the policy is now recurrent multi-input: a CNN/LSTM over the live frame stack plus explicit HUD scalars for score and health.
+It is built around a Gymnasium environment plus `RecurrentPPO`. By default the policy is now recurrent multi-input: a CNN/LSTM over stacked RGB game frames plus explicit HUD scalars for score and health.
 
 ## What Is Included
 
@@ -184,7 +184,7 @@ Reward is composed as:
 
 The policy observation is also richer than before:
 
-- `image`: stacked grayscale frames from the captured game window
+- `image`: stacked RGB frames from the captured game window
 - `hud`: `[health_percent, normalized_score, health_visible, score_visible]`
 
 For strict black-box setups with no OCR, leave score reward disabled and rely on time/activity proxies until your capture/reset loop is stable.

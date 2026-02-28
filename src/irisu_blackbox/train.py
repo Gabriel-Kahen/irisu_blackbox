@@ -73,7 +73,6 @@ def _make_model(cfg: RootConfig, vec_env: VecMonitor, run_dir: Path) -> Recurren
         ent_coef=cfg.train.ent_coef,
         vf_coef=cfg.train.vf_coef,
         max_grad_norm=cfg.train.max_grad_norm,
-        policy_kwargs={"normalize_images": False},
         tensorboard_log=str(run_dir / "tensorboard"),
         verbose=1,
         seed=cfg.train.seed,

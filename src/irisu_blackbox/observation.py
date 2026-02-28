@@ -13,10 +13,19 @@ class FrameProcessor:
         self.stack = stack
         self._frames: deque[np.ndarray] = deque(maxlen=stack)
 
+    def _resize_rgb(self, frame_bgr: np.ndarray) -> np.ndarray:
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        return cv2.resize(rgb, (self.width, self.height), interpolation=cv2.INTER_AREA)
+
     def preprocess(self, frame_bgr: np.ndarray) -> np.ndarray:
-        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        resized = cv2.resize(gray, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        return (resized.astype(np.float32) / 255.0).copy()
+        resized_rgb = self._resize_rgb(frame_bgr)
+        # Reward shaping uses normalized float tensors.
+        return np.transpose(resized_rgb.astype(np.float32) / 255.0, (2, 0, 1)).copy()
+
+    def preprocess_observation(self, frame_bgr: np.ndarray) -> np.ndarray:
+        resized_rgb = self._resize_rgb(frame_bgr)
+        # SB3 image extractors are most reliable with uint8 channel-first tensors.
+        return np.transpose(resized_rgb, (2, 0, 1)).copy()
 
     def reset(self, initial_frame: np.ndarray) -> np.ndarray:
         self._frames.clear()
@@ -32,5 +41,5 @@ class FrameProcessor:
     def observation(self) -> np.ndarray:
         if len(self._frames) < self.stack:
             raise RuntimeError("Frame stack not initialized")
-        stacked = np.stack(list(self._frames), axis=0)
-        return stacked.astype(np.float32, copy=False)
+        stacked = np.concatenate(list(self._frames), axis=0)
+        return stacked

@@ -233,7 +233,8 @@ def test_env_returns_dict_observation_with_hud_features():
         obs, _ = env.reset()
         assert isinstance(obs, dict)
         assert set(obs.keys()) == {"image", "hud"}
-        assert obs["image"].shape == (2, 64, 64)
+        assert obs["image"].shape == (6, 64, 64)
+        assert obs["image"].dtype == np.uint8
         assert obs["hud"].shape == (4,)
         assert obs["hud"].dtype == np.float32
     finally:
