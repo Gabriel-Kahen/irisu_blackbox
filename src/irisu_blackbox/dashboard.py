@@ -6,9 +6,6 @@ import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
-import numpy as np
-
 from irisu_blackbox.config import load_config
 from irisu_blackbox.factory import make_env_factory
 from irisu_blackbox.hud import HUDState
@@ -25,24 +22,6 @@ def _score_text(score: int | None) -> str:
     if score is None:
         return "--"
     return f"{score:,}"
-
-
-def _resize_for_preview(frame_bgr: np.ndarray, max_width: int, max_height: int) -> np.ndarray:
-    height, width = frame_bgr.shape[:2]
-    if height <= 0 or width <= 0:
-        raise ValueError("Frame has invalid shape")
-    scale = min(max_width / width, max_height / height)
-    scale = max(scale, 0.01)
-    out_w = max(1, int(width * scale))
-    out_h = max(1, int(height * scale))
-    return cv2.resize(frame_bgr, (out_w, out_h), interpolation=cv2.INTER_AREA)
-
-
-def _ppm_photo(frame_bgr: np.ndarray) -> tk.PhotoImage:
-    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    height, width = rgb.shape[:2]
-    header = f"P6 {width} {height} 255 ".encode("ascii")
-    return tk.PhotoImage(data=header + rgb.tobytes(), format="PPM")
 
 
 @dataclass(slots=True)
@@ -133,8 +112,6 @@ class DashboardWindow:
         self.root.resizable(False, False)
         self.root.bind("<Escape>", lambda _event: self.close())
 
-        self.preview_photo: tk.PhotoImage | None = None
-
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -165,17 +142,8 @@ class DashboardWindow:
         )
         self.state_label.pack(fill="x", pady=(6, 0))
 
-        self.preview_label = tk.Label(
-            self.root,
-            bg="#111827",
-            bd=0,
-            highlightthickness=1,
-            highlightbackground="#23304d",
-        )
-        self.preview_label.pack(fill="x", padx=20, pady=(8, 18))
-
         stats = tk.Frame(self.root, bg="#0b1020")
-        stats.pack(fill="both", expand=True, padx=20)
+        stats.pack(fill="both", expand=True, padx=20, pady=(18, 0))
 
         self.score_value = tk.Label(
             stats,
@@ -307,10 +275,6 @@ class DashboardWindow:
         frame = self.env.backend.capture_frame()
         hud = self.env.hud_reader.read(frame)
         stats = self.tracker.update(hud)
-
-        preview = _resize_for_preview(frame, max_width=440, max_height=340)
-        self.preview_photo = _ppm_photo(preview)
-        self.preview_label.configure(image=self.preview_photo)
 
         state_color = {
             "LIVE": "#4ade80",

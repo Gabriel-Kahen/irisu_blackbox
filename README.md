@@ -141,7 +141,6 @@ irisu-dashboard --config configs/base.toml --geometry 480x1080+0+0 --topmost
 
 This opens a separate dashboard window showing:
 
-- live game preview
 - score
 - health bar and percentage
 - session timer
