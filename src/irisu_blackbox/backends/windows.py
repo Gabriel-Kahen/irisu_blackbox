@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import re
 import subprocess
 import time
@@ -191,13 +192,43 @@ class WindowsGameBackend(GameBackend):
                 "backend could not infer the original executable path."
             )
 
-        cmd = [launch_spec.executable, *launch_spec.args]
+        resolved_executable = self._resolve_launch_executable(launch_spec)
+        cmd = [resolved_executable, *launch_spec.args]
         try:
-            subprocess.Popen(cmd, cwd=launch_spec.workdir or None)
+            if not launch_spec.args and hasattr(os, "startfile"):
+                os.startfile(resolved_executable)
+            else:
+                subprocess.Popen(cmd, cwd=launch_spec.workdir or None)
         except OSError as exc:
             raise RuntimeError(
                 f"Failed to relaunch game with command: {cmd!r}"
             ) from exc
+
+    @staticmethod
+    def _resolve_launch_executable(launch_spec: LaunchSpec) -> str:
+        configured = Path(launch_spec.executable)
+        if configured.exists():
+            return str(configured)
+
+        search_roots: list[Path] = []
+        if launch_spec.workdir:
+            workdir = Path(launch_spec.workdir)
+            if workdir.exists():
+                search_roots.append(workdir)
+        parent = configured.parent
+        if str(parent) and parent.exists() and parent not in search_roots:
+            search_roots.append(parent)
+
+        filename = configured.name.lower()
+        for root in search_roots:
+            for candidate in root.rglob("*"):
+                if candidate.is_file() and candidate.name.lower() == filename:
+                    return str(candidate)
+
+        raise RuntimeError(
+            f"Configured launch_executable does not exist and no matching file was found: "
+            f"{launch_spec.executable!r}"
+        )
 
     def _wait_for_window_after_launch(self):
         deadline = time.monotonic() + max(0.0, float(self.binding.relaunch_timeout_s))

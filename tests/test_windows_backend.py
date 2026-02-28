@@ -1,4 +1,5 @@
 import numpy as np
+from pathlib import Path
 
 from irisu_blackbox.config import Rect
 from irisu_blackbox.backends import windows as winmod
@@ -104,6 +105,11 @@ def test_windows_backend_relaunches_missing_window_on_capture(monkeypatch):
         return object()
 
     monkeypatch.setattr(winmod.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        winmod.WindowsGameBackend,
+        "_resolve_launch_executable",
+        staticmethod(lambda launch_spec: launch_spec.executable),
+    )
 
     backend = WindowsGameBackend(
         binding=WindowBinding(
@@ -137,6 +143,11 @@ def test_windows_backend_relaunches_missing_window_during_init(monkeypatch):
         return object()
 
     monkeypatch.setattr(winmod.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        winmod.WindowsGameBackend,
+        "_resolve_launch_executable",
+        staticmethod(lambda launch_spec: launch_spec.executable),
+    )
 
     backend = WindowsGameBackend(
         binding=WindowBinding(
@@ -173,6 +184,11 @@ def test_windows_backend_skips_click_that_triggered_relaunch(monkeypatch):
         "_infer_launch_spec_from_window",
         staticmethod(lambda _window: LaunchSpec("C:/Games/Irisu.exe", workdir="C:/Games")),
     )
+    monkeypatch.setattr(
+        winmod.WindowsGameBackend,
+        "_resolve_launch_executable",
+        staticmethod(lambda launch_spec: launch_spec.executable),
+    )
 
     backend = WindowsGameBackend(
         binding=WindowBinding(
@@ -189,3 +205,20 @@ def test_windows_backend_skips_click_that_triggered_relaunch(monkeypatch):
         assert fake_pyautogui.mouse_up_calls == []
     finally:
         backend.close()
+
+
+def test_resolve_launch_executable_searches_workdir_recursively(tmp_path: Path):
+    desktop = tmp_path / "Desktop"
+    nested = desktop / "irisu"
+    nested.mkdir(parents=True)
+    exe = nested / "irisu.exe"
+    exe.write_text("", encoding="utf-8")
+
+    resolved = WindowsGameBackend._resolve_launch_executable(
+        LaunchSpec(
+            executable=str(desktop / "irisu.exe"),
+            workdir=str(desktop),
+        )
+    )
+
+    assert resolved == str(exe)
