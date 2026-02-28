@@ -63,20 +63,6 @@ def _make_model(cfg: RootConfig, vec_env: VecMonitor, run_dir: Path) -> Recurren
         else "CnnLstmPolicy"
     )
 
-def _load_or_make_model(
-    cfg: RootConfig,
-    vec_env: VecMonitor,
-    run_dir: Path,
-    resume_from: Path | None = None,
-) -> tuple[RecurrentPPO, bool]:
-    if resume_from is None:
-        return _make_model(cfg, vec_env, run_dir=run_dir), False
-
-    model = RecurrentPPO.load(str(resume_from), env=vec_env, device=cfg.train.device)
-    model.tensorboard_log = str(run_dir / "tensorboard")
-    model.verbose = 1
-    return model, True
-
     return RecurrentPPO(
         policy=policy,
         env=vec_env,
@@ -94,6 +80,20 @@ def _load_or_make_model(
         seed=cfg.train.seed,
         device=cfg.train.device,
     )
+
+def _load_or_make_model(
+    cfg: RootConfig,
+    vec_env: VecMonitor,
+    run_dir: Path,
+    resume_from: Path | None = None,
+) -> tuple[RecurrentPPO, bool]:
+    if resume_from is None:
+        return _make_model(cfg, vec_env, run_dir=run_dir), False
+
+    model = RecurrentPPO.load(str(resume_from), env=vec_env, device=cfg.train.device)
+    model.tensorboard_log = str(run_dir / "tensorboard")
+    model.verbose = 1
+    return model, True
 
 
 class DashboardMetricsCallback(BaseCallback):
