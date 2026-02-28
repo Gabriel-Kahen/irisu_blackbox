@@ -25,8 +25,8 @@ focus_before_step = true
 relaunch_on_missing_window = true
 relaunch_timeout_s = 15.0
 relaunch_poll_s = 0.25
-launch_executable = "C:\\Users\\gabek\\Documents\\irisu.exe"
-launch_workdir = "C:\\Users\\gabek\\Documents"
+launch_executable = "C:\\Users\\gabek\\Documents\\roms\\Irisu Syndrome\\Irisu Syndrome\\irisu.exe"
+launch_workdir = "C:\\Users\\gabek\\Documents\\roms\\Irisu Syndrome\\Irisu Syndrome"
 launch_args = []
 
 [env.window.capture_region]
