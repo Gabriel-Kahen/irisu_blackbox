@@ -41,6 +41,7 @@ irisu-train = "irisu_blackbox.train:main"
 irisu-play = "irisu_blackbox.play:main"
 irisu-calibrate = "irisu_blackbox.calibrate:main"
 irisu-monitor = "irisu_blackbox.monitor:main"
+irisu-dashboard = "irisu_blackbox.dashboard:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/irisu_blackbox"]

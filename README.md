@@ -131,6 +131,24 @@ Auto-run reset macro when health disappears for configured patience:
 irisu-monitor --config configs/base.toml --auto-reset
 ```
 
+### Stream Dashboard
+
+For a stream-friendly side HUD window, run:
+
+```bash
+irisu-dashboard --config configs/base.toml --geometry 480x1080+0+0 --topmost
+```
+
+This opens a separate dashboard window showing:
+
+- live game preview
+- score
+- health bar and percentage
+- session timer
+- round timer
+- episode/reset counts
+- session best score
+
 ### Irisu Menu Restart Macro (Start Click)
 
 Use a click step in `env.reset_macro` that targets the `Start` button.
