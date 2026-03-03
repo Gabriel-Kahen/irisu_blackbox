@@ -146,6 +146,12 @@ For a stream-friendly side dashboard that shows RL training metrics, run:
 irisu-dashboard --config configs/base.toml --run-dir runs/live_rgb_v1 --geometry 480x1080+0+0 --topmost
 ```
 
+For the architecture dashboard that visualizes the neural net layout instead of the metric grid:
+
+```bash
+irisu-dashboard --config configs/base.toml --run-dir runs/live_rgb_v1 --geometry 480x1080+0+0 --topmost --view network
+```
+
 This opens a separate dashboard window showing:
 
 - total timesteps
@@ -157,6 +163,11 @@ This opens a separate dashboard window showing:
 - entropy / value / policy losses
 - explained variance
 - static model config summary
+
+The `--view` flag selects between:
+
+- `metrics`: the original live metric HUD
+- `network`: a visual architecture map of the policy network with live training badges
 
 The dashboard prefers a live `dashboard_metrics.json` file written by the training process.
 If you point it at an older run that started before this feature existed, it falls back to

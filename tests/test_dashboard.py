@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from irisu_blackbox.dashboard import (
+    _architecture_nodes,
     _format_compact_int,
     _format_duration,
     _format_percent,
@@ -49,3 +50,24 @@ def test_obs_text_describes_rgb_stack():
     cfg.env.hud_features.enabled = True
 
     assert _obs_text(cfg) == "RGB 12x96x96 + HUD4"
+
+
+def test_architecture_nodes_include_hud_and_heads():
+    cfg = RootConfig()
+    cfg.env.hud_features.enabled = True
+    cfg.env.frame_stack = 4
+    cfg.env.obs_width = 96
+    cfg.env.obs_height = 96
+
+    nodes = _architecture_nodes(cfg)
+    titles = [node["title"] for node in nodes]
+
+    assert titles == [
+        "SCREEN STACK",
+        "HUD FEATURES",
+        "CNN ENCODER",
+        "FUSION",
+        "LSTM MEMORY",
+        "POLICY HEAD",
+        "VALUE HEAD",
+    ]
