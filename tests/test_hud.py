@@ -109,6 +109,127 @@ def test_scanline_boundary_estimates_right_to_left_fill():
     assert 0.72 <= hud.health_percent <= 0.78
 
 
+def test_scanline_noise_does_not_count_as_visible_health_bar():
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    y = 50
+    x0, x1 = 20, 179
+    frame[y - 1 : y + 2, 42:46] = (0, 0, 210)
+    frame[y - 1 : y + 2, 110:113] = (0, 0, 210)
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="right_to_left",
+        min_visible_pixels=10,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    hud = reader.read(frame)
+    assert hud.health_visible is False
+    assert hud.health_percent == 0.0
+
+
+def test_profile_noise_does_not_count_as_visible_health_bar():
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    frame[30:40, 42:46] = (0, 0, 210)
+    frame[30:40, 110:113] = (0, 0, 210)
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        region=Rect(left=20, top=30, width=140, height=20),
+        min_visible_pixels=10,
+        column_fill_threshold=0.05,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    hud = reader.read(frame)
+    assert hud.health_visible is False
+    assert hud.health_percent == 0.0
+
+
+def test_scanline_light_pink_bar_counts_as_visible():
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    y = 50
+    x0, x1 = 20, 179
+    frame[y - 1 : y + 2, x0:100] = (170, 170, 255)
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="right_to_left",
+        min_visible_pixels=10,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    hud = reader.read(frame)
+    assert hud.health_visible is True
+    assert hud.health_percent is not None
+
+
+def test_scanline_left_half_presence_ignores_right_side_occlusion():
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    y = 50
+    x0, x1 = 20, 179
+    frame[y - 1 : y + 2, x0:95] = (170, 170, 255)
+    frame[y - 1 : y + 2, 95 : x1 + 1] = (220, 220, 220)
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="left_to_right",
+        invert_percent=False,
+        min_visible_pixels=10,
+        presence_ratio_threshold=0.08,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    hud = reader.read(frame)
+    assert hud.health_visible is True
+    assert hud.health_percent is not None
+    assert 0.4 <= hud.health_percent <= 0.55
+
+
+def test_scanline_right_half_color_does_not_count_as_health_presence():
+    frame = np.zeros((100, 200, 3), dtype=np.uint8)
+    y = 50
+    x0, x1 = 20, 179
+    frame[y - 1 : y + 2, 100 : x1 + 1] = (170, 170, 255)
+
+    health_cfg = HealthBarConfig(
+        enabled=True,
+        method="scanline",
+        scanline_start_x=x0,
+        scanline_end_x=x1,
+        scanline_y=y,
+        scanline_half_height=1,
+        scanline_contrast_threshold=0.01,
+        fill_direction="left_to_right",
+        invert_percent=False,
+        min_visible_pixels=10,
+        presence_ratio_threshold=0.08,
+    )
+    reader = HUDReader(ScoreOCRConfig(enabled=False), health_cfg)
+
+    hud = reader.read(frame)
+    assert hud.health_visible is False
+    assert hud.health_percent == 0.0
+
+
 def test_health_smoothing_window_reduces_single_frame_spike():
     y = 40
     x0 = 20

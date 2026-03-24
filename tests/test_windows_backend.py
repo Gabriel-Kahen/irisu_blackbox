@@ -44,9 +44,13 @@ class FakePyAutoGUI:
     def __init__(self) -> None:
         self.FAILSAFE = False
         self.PAUSE = 0.0
+        self.move_to_calls: list[tuple[int, int]] = []
         self.mouse_down_calls: list[tuple[int, int, str]] = []
         self.mouse_up_calls: list[tuple[int, int, str]] = []
         self.key_presses: list[str] = []
+
+    def moveTo(self, x: int, y: int) -> None:
+        self.move_to_calls.append((x, y))
 
     def mouseDown(self, x: int, y: int, button: str) -> None:
         self.mouse_down_calls.append((x, y, button))
@@ -222,3 +226,26 @@ def test_resolve_launch_executable_searches_workdir_recursively(tmp_path: Path):
     )
 
     assert resolved == str(exe)
+
+
+def test_windows_backend_click_moves_cursor_and_clamps_short_hold(monkeypatch):
+    state = {"windows": [FakeWindow("Irisu syndrome", hwnd=1)]}
+    fake_pyautogui = _patch_windows_dependencies(monkeypatch, state)
+    sleeps: list[float] = []
+    monkeypatch.setattr(winmod.time, "sleep", lambda value: sleeps.append(value))
+
+    backend = WindowsGameBackend(
+        binding=WindowBinding(
+            title_regex="Irisu syndrome",
+            capture_region=Rect(left=10, top=20, width=30, height=40),
+            focus_before_step=False,
+        )
+    )
+    try:
+        backend.click(123, 456, button="right", hold_s=0.01)
+        assert fake_pyautogui.move_to_calls == [(123, 456)]
+        assert fake_pyautogui.mouse_down_calls == [(123, 456, "right")]
+        assert fake_pyautogui.mouse_up_calls == [(123, 456, "right")]
+        assert 0.04 in sleeps
+    finally:
+        backend.close()

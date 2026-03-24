@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ctypes
-import os
 import re
 import subprocess
 import time
@@ -26,6 +25,10 @@ else:
     _IMPORT_ERROR = None
 
 from irisu_blackbox.backends.base import GameBackend
+
+_FOCUS_SETTLE_S = 0.05
+_CURSOR_SETTLE_S = 0.01
+_MIN_CLICK_HOLD_S = 0.04
 
 
 @dataclass(slots=True)
@@ -195,10 +198,8 @@ class WindowsGameBackend(GameBackend):
         resolved_executable = self._resolve_launch_executable(launch_spec)
         cmd = [resolved_executable, *launch_spec.args]
         try:
-            if not launch_spec.args and hasattr(os, "startfile"):
-                os.startfile(resolved_executable)
-            else:
-                subprocess.Popen(cmd, cwd=launch_spec.workdir or None)
+            # Always use subprocess so relaunch honors launch_workdir consistently.
+            subprocess.Popen(cmd, cwd=launch_spec.workdir or None)
         except OSError as exc:
             raise RuntimeError(
                 f"Failed to relaunch game with command: {cmd!r}"
@@ -260,10 +261,22 @@ class WindowsGameBackend(GameBackend):
     def _focus_window(self) -> None:
         try:
             self._window.activate()
-            time.sleep(0.02)
+            time.sleep(_FOCUS_SETTLE_S)
         except Exception:
             # Some windows deny focus requests; continue without focus hard-fail.
             pass
+
+    def _perform_mouse_click(self, *, x: int, y: int, button: str, hold_s: float) -> None:
+        effective_hold_s = max(_MIN_CLICK_HOLD_S, float(hold_s))
+        move_to = getattr(pyautogui, "moveTo", None)
+        if callable(move_to):
+            move_to(x, y)
+            if _CURSOR_SETTLE_S > 0:
+                time.sleep(_CURSOR_SETTLE_S)
+        pyautogui.mouseDown(x=x, y=y, button=button)
+        if effective_hold_s > 0:
+            time.sleep(effective_hold_s)
+        pyautogui.mouseUp(x=x, y=y, button=button)
 
     def _run_macro(self) -> None:
         for step in self.reset_macro:
@@ -280,10 +293,12 @@ class WindowsGameBackend(GameBackend):
                 if step.relative_to_capture:
                     x = self._capture_region.left + x
                     y = self._capture_region.top + y
-                pyautogui.mouseDown(x=x, y=y, button=step.button)
-                if step.duration_s > 0:
-                    time.sleep(step.duration_s)
-                pyautogui.mouseUp(x=x, y=y, button=step.button)
+                self._perform_mouse_click(
+                    x=x,
+                    y=y,
+                    button=step.button,
+                    hold_s=step.duration_s,
+                )
                 continue
 
             if kind == "key":
@@ -310,10 +325,7 @@ class WindowsGameBackend(GameBackend):
             return
         if self.binding.focus_before_step:
             self._focus_window()
-        pyautogui.mouseDown(x=x, y=y, button=button)
-        if hold_s > 0:
-            time.sleep(hold_s)
-        pyautogui.mouseUp(x=x, y=y, button=button)
+        self._perform_mouse_click(x=x, y=y, button=button, hold_s=hold_s)
 
     def reset(self) -> None:
         self._refresh_window_and_region(allow_relaunch=True)

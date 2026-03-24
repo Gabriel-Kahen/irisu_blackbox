@@ -115,6 +115,7 @@ class DashboardMetricsCallback(BaseCallback):
             num_timesteps=int(self.num_timesteps),
             infos=infos,
             logger_values=logger_values,
+            actions=self.locals.get("actions"),
         )
         return True
 
@@ -125,6 +126,7 @@ class DashboardMetricsCallback(BaseCallback):
             num_timesteps=int(self.num_timesteps),
             infos=self.locals.get("infos"),
             logger_values=logger_values,
+            actions=self.locals.get("actions"),
             force=True,
         )
 

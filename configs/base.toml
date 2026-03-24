@@ -6,7 +6,8 @@ obs_width = 96
 obs_height = 96
 frame_stack = 4
 game_over_on_health_missing = true
-health_missing_patience = 3
+health_missing_patience = 1
+health_loss_check_interval_s = 0.2
 action_pause_on_health_missing_s = 1.0
 game_over_template = ""
 game_over_threshold = 0.92
@@ -38,10 +39,10 @@ height = 480
 [env.action_grid]
 rows = 8
 cols = 8
-left = 786
-top = 358
-right = 1073
-bottom = 685
+left = 783
+top = 296
+right = 1087
+bottom = 690
 
 [env.reward]
 survival_reward = 0.01
@@ -64,7 +65,7 @@ score_log_max = 50000.0
 [env.episode]
 max_steps = 5000
 action_repeat = 1
-click_hold_s = 0.01
+click_hold_s = 0.04
 max_clicks_per_second = 3.0
 inter_step_sleep_s = 0.0
 max_same_action_streak = 8
@@ -79,7 +80,7 @@ duration_s = 0.04
 
 [[env.game_over_macro]]
 kind = "sleep"
-duration_s = 1.0
+duration_s = 0.5
 
 [[env.reset_macro]]
 kind = "click"
@@ -117,6 +118,8 @@ height = 28
 [env.health_bar]
 enabled = true
 method = "scanline"
+visibility_left_fraction = 0.5
+presence_ratio_threshold = 0.08
 # Frame coords (relative to captured frame, not absolute screen):
 # x_start = screen_x_start - env.window.capture_region.left
 # x_end = screen_x_end - env.window.capture_region.left

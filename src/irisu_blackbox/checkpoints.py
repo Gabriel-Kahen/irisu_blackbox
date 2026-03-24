@@ -11,12 +11,25 @@ def checkpoint_step(path: Path) -> int:
 
 def find_latest_resume_path(run_dir: Path) -> Path | None:
     checkpoints_dir = run_dir / "checkpoints"
-    candidates: list[Path] = []
+    checkpoints: list[Path] = []
     if checkpoints_dir.is_dir():
-        candidates.extend(checkpoints_dir.glob("*.zip"))
+        checkpoints.extend(checkpoints_dir.glob("*.zip"))
     final_model = run_dir / "final_model.zip"
-    if final_model.exists():
-        candidates.append(final_model)
-    if not candidates:
+    if not checkpoints and not final_model.exists():
         return None
-    return max(candidates, key=lambda path: (checkpoint_step(path), path.stat().st_mtime))
+
+    latest_checkpoint = (
+        max(checkpoints, key=lambda path: (checkpoint_step(path), path.stat().st_mtime))
+        if checkpoints
+        else None
+    )
+    if not final_model.exists():
+        return latest_checkpoint
+    if latest_checkpoint is None:
+        return final_model
+
+    final_mtime = final_model.stat().st_mtime
+    checkpoint_mtime = latest_checkpoint.stat().st_mtime
+    if final_mtime >= checkpoint_mtime:
+        return final_model
+    return latest_checkpoint

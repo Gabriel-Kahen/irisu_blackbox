@@ -60,12 +60,18 @@ class RewardShaper:
         processed_frame: np.ndarray,
         raw_frame_bgr: np.ndarray,
         observed_score: int | None = None,
+        observed_score_visible: bool | None = None,
         observed_health_percent: float | None = None,
         health_visible: bool | None = None,
     ) -> None:
         self._prev_processed = processed_frame.copy()
         self._stale_steps = 0
-        self._prev_score = observed_score if observed_score is not None else self._read_score(raw_frame_bgr)
+        initial_score = self._resolve_score(
+            raw_frame_bgr,
+            observed_score=observed_score,
+            observed_score_visible=observed_score_visible,
+        )
+        self._prev_score = initial_score
         self._prev_health_percent = (
             float(observed_health_percent)
             if health_visible is True and observed_health_percent is not None
@@ -102,6 +108,7 @@ class RewardShaper:
         processed_frame: np.ndarray,
         raw_frame_bgr: np.ndarray,
         observed_score: int | None = None,
+        observed_score_visible: bool | None = None,
         observed_health_percent: float | None = None,
         health_visible: bool | None = None,
     ) -> tuple[float, dict[str, float]]:
@@ -110,6 +117,7 @@ class RewardShaper:
                 processed_frame,
                 raw_frame_bgr,
                 observed_score=observed_score,
+                observed_score_visible=observed_score_visible,
                 observed_health_percent=observed_health_percent,
                 health_visible=health_visible,
             )
@@ -132,7 +140,11 @@ class RewardShaper:
         if self._stale_steps >= self.cfg.stale_patience:
             terms.stale = self.cfg.stale_penalty
 
-        current_score = observed_score if observed_score is not None else self._read_score(raw_frame_bgr)
+        current_score = self._resolve_score(
+            raw_frame_bgr,
+            observed_score=observed_score,
+            observed_score_visible=observed_score_visible,
+        )
         if current_score is not None and self._prev_score is not None:
             delta = max(0, current_score - self._prev_score)
             terms.score_delta = delta * self.cfg.score_delta_scale
@@ -153,3 +165,18 @@ class RewardShaper:
 
         self._prev_processed = processed_frame.copy()
         return terms.total, terms.as_dict()
+
+    def _resolve_score(
+        self,
+        raw_frame_bgr: np.ndarray,
+        *,
+        observed_score: int | None,
+        observed_score_visible: bool | None,
+    ) -> int | None:
+        if observed_score_visible is True:
+            return observed_score
+        if observed_score_visible is False:
+            return None
+        if observed_score is not None:
+            return observed_score
+        return self._read_score(raw_frame_bgr)

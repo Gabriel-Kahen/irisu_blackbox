@@ -158,6 +158,8 @@ class HealthBarConfig:
     enabled: bool = False
     region: Rect | None = None
     method: str = "profile"
+    visibility_left_fraction: float = 0.5
+    presence_ratio_threshold: float = 0.08
     scanline_start_x: int | None = None
     scanline_end_x: int | None = None
     scanline_y: int | None = None
@@ -187,6 +189,12 @@ class HealthBarConfig:
             enabled=bool(data.get("enabled", defaults.enabled)),
             region=region,
             method=str(data.get("method", defaults.method)),
+            visibility_left_fraction=float(
+                data.get("visibility_left_fraction", defaults.visibility_left_fraction)
+            ),
+            presence_ratio_threshold=float(
+                data.get("presence_ratio_threshold", defaults.presence_ratio_threshold)
+            ),
             scanline_start_x=(
                 int(data["scanline_start_x"]) if data.get("scanline_start_x") is not None else None
             ),
@@ -265,7 +273,7 @@ class RewardConfig:
 class EpisodeConfig:
     max_steps: int = 5000
     action_repeat: int = 1
-    click_hold_s: float = 0.01
+    click_hold_s: float = 0.04
     max_clicks_per_second: float = 3.0
     inter_step_sleep_s: float = 0.0
     max_same_action_streak: int = 8
@@ -394,6 +402,7 @@ class EnvConfig:
     health_bar: HealthBarConfig = field(default_factory=HealthBarConfig)
     game_over_on_health_missing: bool = False
     health_missing_patience: int = 3
+    health_loss_check_interval_s: float = 0.2
     action_pause_on_health_missing_s: float = 1.0
     game_over_template: str | None = None
     game_over_threshold: float = 0.9
@@ -433,6 +442,12 @@ class EnvConfig:
             ),
             health_missing_patience=int(
                 data.get("health_missing_patience", defaults.health_missing_patience)
+            ),
+            health_loss_check_interval_s=float(
+                data.get(
+                    "health_loss_check_interval_s",
+                    defaults.health_loss_check_interval_s,
+                )
             ),
             action_pause_on_health_missing_s=float(
                 data.get(

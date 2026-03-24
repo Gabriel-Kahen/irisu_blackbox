@@ -80,3 +80,34 @@ def test_reward_uses_score_and_health_signals():
     assert np.isclose(terms["health_value"], 0.18)
     assert np.isclose(terms["health_delta"], -0.4)
     assert abs(reward - terms["total"]) < 1e-6
+
+
+def test_reward_ignores_held_score_when_visibility_is_false():
+    cfg = RewardConfig(
+        survival_reward=0.0,
+        activity_reward_scale=0.0,
+        score_delta_scale=0.01,
+        score_value_scale=0.2,
+        score_value_log_max=1000.0,
+    )
+    shaper = RewardShaper(cfg)
+
+    frame = np.zeros((8, 8), dtype=np.float32)
+    raw = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    shaper.reset(
+        frame,
+        raw,
+        observed_score=100,
+        observed_score_visible=True,
+    )
+    reward, terms = shaper.step(
+        frame,
+        raw,
+        observed_score=100,
+        observed_score_visible=False,
+    )
+
+    assert terms["score_delta"] == 0.0
+    assert terms["score_value"] == 0.0
+    assert reward == terms["total"]

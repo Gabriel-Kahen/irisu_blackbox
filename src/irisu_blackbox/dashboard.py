@@ -27,6 +27,7 @@ else:  # pragma: no cover
 BG = "#0a0f1a"
 PANEL_BG = "#101827"
 PANEL_BORDER = "#23304d"
+PANEL_SOFT = "#162238"
 TEXT = "#f8fafc"
 MUTED = "#94a3b8"
 ACCENT = "#7dd3fc"
@@ -47,6 +48,16 @@ def _format_duration(seconds: float) -> str:
     hours, rem = divmod(total, 3600)
     minutes, secs = divmod(rem, 60)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def _format_update_age(seconds: float | None) -> str:
+    if seconds is None:
+        return "--"
+    if seconds < 10.0:
+        return f"{seconds:.1f}s"
+    if seconds < 60.0:
+        return f"{int(seconds)}s"
+    return _format_duration(seconds)
 
 
 def _format_compact_int(value: float | int | None) -> str:
@@ -72,6 +83,19 @@ def _format_percent(value: float | int | None, digits: int = 1) -> str:
     if value is None:
         return "--"
     return f"{float(value) * 100.0:.{digits}f}%"
+
+
+def _format_rate(value: float | int | None) -> str:
+    if value is None:
+        return "--"
+    rate = float(value)
+    if abs(rate) >= 100:
+        return _format_compact_int(rate)
+    if abs(rate) >= 10:
+        return f"{rate:.1f}"
+    if abs(rate) >= 1:
+        return f"{rate:.2f}"
+    return f"{rate:.3f}"
 
 
 def _latest_run_dir(base_dir: Path) -> Path | None:
@@ -104,6 +128,28 @@ def _obs_text(cfg: RootConfig) -> str:
 
 def _action_text(grid: ActionGridConfig) -> str:
     return f"{grid.rows}x{grid.cols} ({grid.action_count} actions)"
+
+
+def _action_output_info(
+    action: int | None,
+    grid: ActionGridConfig,
+) -> tuple[str, int | None, int | None, str]:
+    if action is None:
+        return "waiting", None, None, "NONE"
+    if action == 0:
+        return "noop", None, None, "NO-OP"
+
+    grid_size = grid.grid_size
+    if action < 0 or action >= grid.action_count:
+        return "unknown", None, None, "UNKNOWN"
+
+    button = "LEFT" if action <= grid_size else "RIGHT"
+    offset = action - 1
+    if action > grid_size:
+        offset -= grid_size
+    row = offset // grid.cols
+    col = offset % grid.cols
+    return button.lower(), row, col, f"{button} R{row + 1} C{col + 1}"
 
 
 def _architecture_nodes(cfg: RootConfig) -> list[dict[str, str]]:
@@ -167,6 +213,10 @@ def _architecture_nodes(cfg: RootConfig) -> list[dict[str, str]]:
 @dataclass(slots=True)
 class TrainingSnapshot:
     metrics: dict[str, float]
+    hud: dict[str, float | int | bool | None]
+    control: dict[str, float | int | bool | None]
+    updated_at_s: float | None
+    elapsed_time_s: float | None
     event_path: Path | None
     event_age_s: float | None
     status: str
@@ -230,6 +280,10 @@ class TensorboardMetricsReader:
         if tb_event_accumulator is None:
             return TrainingSnapshot(
                 metrics={},
+                hud={},
+                control={},
+                updated_at_s=None,
+                elapsed_time_s=None,
                 event_path=None,
                 event_age_s=None,
                 status="NO TENSORBOARD",
@@ -245,6 +299,10 @@ class TensorboardMetricsReader:
             )
             return TrainingSnapshot(
                 metrics={},
+                hud={},
+                control={},
+                updated_at_s=None,
+                elapsed_time_s=None,
                 event_path=None,
                 event_age_s=None,
                 status="WAITING",
@@ -260,6 +318,10 @@ class TensorboardMetricsReader:
         except Exception as exc:
             return TrainingSnapshot(
                 metrics={},
+                hud={},
+                control={},
+                updated_at_s=None,
+                elapsed_time_s=None,
                 event_path=event_path,
                 event_age_s=max(0.0, time.time() - event_path.stat().st_mtime),
                 status="ERROR",
@@ -291,6 +353,10 @@ class TensorboardMetricsReader:
         if latest_wall_time is None:
             return TrainingSnapshot(
                 metrics={},
+                hud={},
+                control={},
+                updated_at_s=None,
+                elapsed_time_s=None,
                 event_path=event_path,
                 event_age_s=max(0.0, time.time() - event_path.stat().st_mtime),
                 status="WAITING",
@@ -302,6 +368,10 @@ class TensorboardMetricsReader:
         detail = event_path.parent.name
         return TrainingSnapshot(
             metrics=metrics,
+            hud={},
+            control={},
+            updated_at_s=latest_wall_time,
+            elapsed_time_s=None,
             event_path=event_path,
             event_age_s=age_s,
             status=status,
@@ -326,6 +396,11 @@ class DashboardFileReader:
             updated_at_f = None
 
         age_s = max(0.0, time.time() - updated_at_f) if updated_at_f is not None else None
+        elapsed_raw = payload.get("elapsed_time_s")
+        try:
+            elapsed_time_s = float(elapsed_raw) if elapsed_raw is not None else None
+        except (TypeError, ValueError):
+            elapsed_time_s = None
         file_status = str(payload.get("status", "live")).upper()
         if file_status == "LIVE" and age_s is not None and age_s > 10.0:
             status = "STALE"
@@ -337,12 +412,20 @@ class DashboardFileReader:
             status = file_status
 
         detail = str(payload.get("detail", "dashboard_metrics.json"))
+        hud_raw = payload.get("hud", {})
+        hud = dict(hud_raw) if isinstance(hud_raw, dict) else {}
+        control_raw = payload.get("control", {})
+        control = dict(control_raw) if isinstance(control_raw, dict) else {}
         return TrainingSnapshot(
             metrics={
                 str(key): float(value)
                 for key, value in dict(payload.get("metrics", {})).items()
                 if value is not None
             },
+            hud=hud,
+            control=control,
+            updated_at_s=updated_at_f,
+            elapsed_time_s=elapsed_time_s,
             event_path=self.metrics_path,
             event_age_s=age_s,
             status=status,
@@ -427,20 +510,28 @@ class MetricsDashboardWindow(BaseDashboardWindow):
             always_on_top=always_on_top,
             title="Irisu RL Dashboard",
         )
+        self._last_speed_sample: tuple[float, float] | None = None
+        self._smoothed_train_speed: float | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
-        title_font = ("Consolas", 24, "bold")
-        hero_font = ("Consolas", 34, "bold")
-        metric_title_font = ("Consolas", 12, "bold")
-        metric_value_font = ("Consolas", 18, "bold")
-        small_font = ("Consolas", 12)
+        title_font = ("Bahnschrift SemiBold", 25, "bold")
+        hero_font = ("Bahnschrift SemiBold", 30, "bold")
+        metric_title_font = ("Consolas", 11, "bold")
+        metric_value_font = ("Bahnschrift SemiBold", 18, "bold")
+        small_font = ("Consolas", 11)
 
         shell = tk.Frame(self.root, bg=BG)
-        shell.pack(fill="both", expand=True, padx=20, pady=18)
+        shell.pack(fill="both", expand=True, padx=22, pady=20)
+
+        header_row = tk.Frame(shell, bg=BG)
+        header_row.pack(fill="x", pady=(0, 14))
+
+        title_block = tk.Frame(header_row, bg=BG)
+        title_block.pack(side="left", fill="x", expand=True)
 
         tk.Label(
-            shell,
+            title_block,
             text="IRISU RL DASHBOARD",
             bg=BG,
             fg=TEXT,
@@ -449,63 +540,104 @@ class MetricsDashboardWindow(BaseDashboardWindow):
         ).pack(fill="x")
 
         self.status_label = tk.Label(
-            shell,
+            header_row,
             text="WAITING",
-            bg=BG,
+            bg=PANEL_BG,
             fg=ACCENT,
-            font=("Consolas", 18, "bold"),
-            anchor="w",
+            font=("Consolas", 12, "bold"),
+            anchor="center",
+            padx=14,
+            pady=8,
+            highlightthickness=1,
+            highlightbackground=PANEL_BORDER,
+            bd=0,
         )
-        self.status_label.pack(fill="x", pady=(6, 2))
+        self.status_label.pack(side="right")
 
-        self.detail_label = tk.Label(
-            shell,
-            text=str(self.run_dir),
-            bg=BG,
-            fg=MUTED,
-            font=small_font,
-            anchor="w",
-            justify="left",
-            wraplength=430,
-        )
-        self.detail_label.pack(fill="x", pady=(0, 18))
+        hero_grid = tk.Frame(shell, bg=BG)
+        hero_grid.pack(fill="x", pady=(0, 12))
+        self.hero_boxes: dict[str, tk.Label] = {}
+        self.hero_cards: dict[str, tk.Frame] = {}
+        hero_spec = {
+            "score": {"title": "SCORE", "accent": PANEL_BORDER, "bg": PANEL_BG},
+            "health": {"title": "HEALTH", "accent": PANEL_BORDER, "bg": PANEL_BG},
+            "high_score": {"title": "BEST SCORE", "accent": PANEL_BORDER, "bg": PANEL_BG},
+            "games_played": {"title": "GAMES PLAYED", "accent": PANEL_BORDER, "bg": PANEL_BG},
+        }
+        self.health_meter_fill: tk.Frame | None = None
+        for idx, (key, title) in enumerate(
+            [
+                ("score", "SCORE"),
+                ("health", "HEALTH"),
+                ("high_score", "BEST SCORE"),
+                ("games_played", "GAMES PLAYED"),
+            ]
+        ):
+            block = tk.Frame(
+                hero_grid,
+                bg=hero_spec[key]["bg"],
+                highlightthickness=1,
+                highlightbackground=hero_spec[key]["accent"],
+                bd=0,
+            )
+            row = idx // 2
+            col = idx % 2
+            block.grid(row=row, column=col, sticky="nsew", padx=(0, 12 if col == 0 else 0), pady=(0, 12))
+            hero_grid.grid_columnconfigure(col, weight=1)
 
-        self.hero_timestep = self._hero_block(shell, "TIMESTEPS", hero_font)
-        self.hero_reward = self._hero_block(shell, "EP REWARD", hero_font)
+            accent = hero_spec[key]["accent"]
+            tk.Frame(block, bg=accent, height=4).pack(fill="x")
+            tk.Label(
+                block,
+                text=title,
+                bg=hero_spec[key]["bg"],
+                fg=MUTED,
+                font=metric_title_font,
+                anchor="w",
+            ).pack(fill="x", padx=12, pady=(10, 2))
+            value = tk.Label(
+                block,
+                text="--",
+                bg=hero_spec[key]["bg"],
+                fg=TEXT,
+                font=hero_font,
+                anchor="w",
+            )
+            value.pack(fill="x", padx=12, pady=(0, 10))
+            if key == "health":
+                meter_track = tk.Frame(block, bg="#203043", height=8)
+                meter_track.pack(fill="x", padx=12, pady=(0, 12))
+                meter_fill = tk.Frame(meter_track, bg="#7c8aa0", height=8)
+                meter_fill.place(x=0, y=0, relheight=1.0, relwidth=0.0)
+                self.health_meter_fill = meter_fill
+            self.hero_boxes[key] = value
+            self.hero_cards[key] = block
 
         grid = tk.Frame(shell, bg=BG)
-        grid.pack(fill="x", pady=(8, 16), expand=True)
+        grid.pack(fill="x", pady=(0, 12))
 
         self.metric_boxes: dict[str, tk.Label] = {}
         metric_layout = [
-            ("fps", "FPS"),
-            ("iterations", "ITERATIONS"),
-            ("n_updates", "UPDATES"),
-            ("ep_len_mean", "EP LENGTH"),
-            ("approx_kl", "APPROX KL"),
-            ("clip_fraction", "CLIP FRAC"),
-            ("entropy_loss", "ENTROPY"),
-            ("explained_variance", "EXPLAINED VAR"),
-            ("policy_gradient_loss", "POLICY LOSS"),
-            ("value_loss", "VALUE LOSS"),
-            ("loss", "TOTAL LOSS"),
-            ("learning_rate", "LR"),
+            ("timesteps", "TIMESTEPS"),
+            ("fps", "TRAIN SPEED"),
+            ("ep_rew_mean", "AVG REWARD"),
+            ("time_running", "TIME RUNNING"),
         ]
         for idx, (key, title) in enumerate(metric_layout):
             box = tk.Frame(
                 grid,
-                bg=PANEL_BG,
+                bg=PANEL_SOFT,
                 highlightthickness=1,
                 highlightbackground=PANEL_BORDER,
                 bd=0,
             )
-            box.grid(row=idx // 2, column=idx % 2, sticky="nsew", padx=(0, 12), pady=(0, 12))
+            box.grid(row=idx // 2, column=idx % 2, sticky="nsew", padx=(0, 12 if (idx % 2) == 0 else 0), pady=(0, 12))
             grid.grid_columnconfigure(idx % 2, weight=1)
 
             tk.Label(
                 box,
                 text=title,
-                bg=PANEL_BG,
+                bg=PANEL_SOFT,
                 fg=MUTED,
                 font=metric_title_font,
                 anchor="w",
@@ -513,7 +645,7 @@ class MetricsDashboardWindow(BaseDashboardWindow):
             value_label = tk.Label(
                 box,
                 text="--",
-                bg=PANEL_BG,
+                bg=PANEL_SOFT,
                 fg=TEXT,
                 font=metric_value_font,
                 anchor="w",
@@ -521,94 +653,187 @@ class MetricsDashboardWindow(BaseDashboardWindow):
             value_label.pack(fill="x", padx=12, pady=(0, 10))
             self.metric_boxes[key] = value_label
 
-        config_box = tk.Frame(
+        network_box = tk.Frame(
             shell,
-            bg=PANEL_BG,
+            bg="#0f172a",
             highlightthickness=1,
-            highlightbackground=PANEL_BORDER,
+            highlightbackground="#2b4263",
             bd=0,
         )
-        config_box.pack(fill="x", pady=(4, 16))
-
+        network_box.pack(fill="both", expand=True, pady=(0, 14))
         tk.Label(
-            config_box,
-            text="MODEL CONFIG",
-            bg=PANEL_BG,
+            network_box,
+            text="LIVE OUTPUT",
+            bg="#0f172a",
             fg=MUTED,
             font=metric_title_font,
             anchor="w",
-        ).pack(fill="x", padx=12, pady=(10, 4))
-
-        static_lines = [
-            f"Policy: {_policy_name(self.cfg)}",
-            f"Obs: {_obs_text(self.cfg)}",
-            f"Grid: {_action_text(self.cfg.env.action_grid)}",
-            f"LR: {_format_float(self.cfg.train.learning_rate, 5)}   Gamma: {_format_float(self.cfg.train.gamma, 3)}",
-            f"Rollout: {self.cfg.train.n_steps}   Batch: {self.cfg.train.batch_size}   Envs: {self.cfg.train.n_envs}",
-        ]
-        for line in static_lines:
-            tk.Label(
-                config_box,
-                text=line,
-                bg=PANEL_BG,
-                fg="#e2e8f0",
-                font=small_font,
-                anchor="w",
-                justify="left",
-            ).pack(fill="x", padx=12, pady=(0, 6))
-
-        self.footer_label = tk.Label(
-            shell,
-            text="ESC to close",
-            bg=BG,
-            fg=MUTED,
-            font=small_font,
-            anchor="w",
-        )
-        self.footer_label.pack(fill="x")
-
-    def _hero_block(self, parent: tk.Widget, title: str, value_font) -> tk.Label:
-        box = tk.Frame(
-            parent,
-            bg=PANEL_BG,
-            highlightthickness=1,
-            highlightbackground=PANEL_BORDER,
-            bd=0,
-        )
-        box.pack(fill="x", pady=(0, 14))
-        tk.Label(
-            box,
-            text=title,
-            bg=PANEL_BG,
-            fg=MUTED,
-            font=("Consolas", 12, "bold"),
-            anchor="w",
         ).pack(fill="x", padx=12, pady=(10, 2))
-        value = tk.Label(
-            box,
-            text="--",
-            bg=PANEL_BG,
-            fg=TEXT,
-            font=value_font,
-            anchor="w",
+        self.network_canvas = tk.Canvas(
+            network_box,
+            bg="#0f172a",
+            bd=0,
+            highlightthickness=0,
+            relief="flat",
         )
-        value.pack(fill="x", padx=12, pady=(0, 10))
-        return value
+        self.network_canvas.pack(fill="both", expand=True, padx=10, pady=(4, 10))
+        self.network_canvas.bind("<Configure>", lambda _event: self._draw_stream_policy_map(None))
 
     def _metric_text(self, key: str, metrics: dict[str, float]) -> str:
         value = metrics.get(key)
-        if key in {"fps", "iterations", "n_updates", "ep_len_mean"}:
+        if key == "timesteps":
             return _format_compact_int(value)
-        if key == "clip_fraction":
-            return _format_percent(value, digits=1)
-        if key == "learning_rate":
-            return _format_float(value, digits=6)
-        if key == "explained_variance":
+        if key == "fps":
+            return _format_rate(value)
+        if key == "ep_rew_mean":
             return _format_float(value, digits=3)
-        return _format_float(value, digits=4)
+        return "--"
+
+    def _live_train_speed(self, snapshot: TrainingSnapshot) -> float | None:
+        updated_at_s = snapshot.updated_at_s
+        timesteps = snapshot.metrics.get("timesteps")
+        if updated_at_s is None or timesteps is None:
+            return self._smoothed_train_speed
+
+        sample = (float(updated_at_s), float(timesteps))
+        previous = self._last_speed_sample
+        self._last_speed_sample = sample
+        if previous is None:
+            return snapshot.metrics.get("fps")
+
+        prev_time, prev_steps = previous
+        delta_t = sample[0] - prev_time
+        delta_steps = sample[1] - prev_steps
+        if delta_t <= 0:
+            return self._smoothed_train_speed if self._smoothed_train_speed is not None else snapshot.metrics.get("fps")
+        if delta_steps < 0:
+            self._smoothed_train_speed = None
+            return snapshot.metrics.get("fps")
+
+        inst_speed = delta_steps / delta_t
+        if self._smoothed_train_speed is None:
+            self._smoothed_train_speed = inst_speed
+        else:
+            self._smoothed_train_speed = (0.65 * self._smoothed_train_speed) + (0.35 * inst_speed)
+        return self._smoothed_train_speed
+
+    def _draw_stream_policy_map(self, snapshot: TrainingSnapshot | None) -> None:
+        canvas = self.network_canvas
+        canvas.delete("all")
+        width = max(360, canvas.winfo_width())
+        height = max(340, canvas.winfo_height())
+
+        canvas.create_rectangle(0, 0, width, height, fill="#0d1424", outline="")
+
+        last_action = None
+        if snapshot and snapshot.control.get("last_action") is not None:
+            last_action_at_raw = snapshot.control.get("last_action_at")
+            try:
+                last_action_at = float(last_action_at_raw) if last_action_at_raw is not None else None
+            except (TypeError, ValueError):
+                last_action_at = None
+            if last_action_at is not None and (time.time() - last_action_at) <= 0.5:
+                last_action = int(snapshot.control["last_action"])
+        action_kind, action_row, action_col, action_label = _action_output_info(last_action, self.cfg.env.action_grid)
+        output_size = min(width - 36, height - 76)
+        output_x = (width - output_size) / 2
+        output_y = 8
+
+        self._draw_stream_output_grid(
+            canvas,
+            x=output_x,
+            y=output_y,
+            size=output_size,
+            rows=self.cfg.env.action_grid.rows,
+            cols=self.cfg.env.action_grid.cols,
+            action_kind=action_kind,
+            action_row=action_row,
+            action_col=action_col,
+            action_label=action_label,
+        )
+
+    def _draw_stream_output_grid(
+        self,
+        canvas: tk.Canvas,
+        *,
+        x: float,
+        y: float,
+        size: float,
+        rows: int,
+        cols: int,
+        action_kind: str,
+        action_row: int | None,
+        action_col: int | None,
+        action_label: str,
+    ) -> None:
+        panel_h = size + 58
+        board_pad = 10
+        board_size = size - (board_pad * 2)
+        gap = max(2, int(board_size * 0.012))
+        total_gap_x = gap * (cols - 1)
+        total_gap_y = gap * (rows - 1)
+        cell_w = (board_size - total_gap_x) / cols
+        cell_h = (board_size - total_gap_y) / rows
+        grid_top = y + 10
+        grid_left = x + board_pad
+
+        canvas.create_rectangle(x + 6, y + 8, x + size + 6, y + panel_h + 8, fill="#08111f", outline="")
+        canvas.create_rectangle(x, y, x + size, y + panel_h, fill="#101a2e", outline="#35507a", width=2)
+        for row in range(rows):
+            for col in range(cols):
+                x0 = grid_left + (col * (cell_w + gap))
+                y0 = grid_top + (row * (cell_h + gap))
+                x1 = x0 + cell_w
+                y1 = y0 + cell_h
+                fill = "#20283a"
+                outline = "#32435f"
+                width = 1
+                if action_row == row and action_col == col:
+                    is_left = action_kind == "left"
+                    fill = "#2d7ef7" if is_left else "#e38b14"
+                    outline = "#dff7ff" if is_left else "#fff1bf"
+                    width = 3
+                canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline=outline, width=width)
+                if action_row == row and action_col == col:
+                    letter = "L" if action_kind == "left" else "R" if action_kind == "right" else ""
+                    if letter:
+                        canvas.create_text(
+                            (x0 + x1) / 2,
+                            (y0 + y1) / 2,
+                            text=letter,
+                            fill=TEXT,
+                            font=("Bahnschrift SemiBold", max(11, int(cell_h * 0.52)), "bold"),
+                        )
+
+        if action_kind == "noop":
+            canvas.create_text(
+                x + (size / 2),
+                grid_top + (board_size / 2),
+                text="NO-OP",
+                fill=TEXT,
+                font=("Consolas", 18, "bold"),
+            )
+
+        accent = "#7dd3fc" if action_kind == "left" else "#fbbf24" if action_kind == "right" else MUTED
+        pill_w = min(220, size - 18)
+        pill_x0 = x + ((size - pill_w) / 2)
+        pill_y0 = y + size + 10
+        canvas.create_rectangle(pill_x0 + 4, pill_y0 + 4, pill_x0 + pill_w + 4, pill_y0 + 36, fill="#09111f", outline="")
+        canvas.create_rectangle(pill_x0, pill_y0, pill_x0 + pill_w, pill_y0 + 32, fill="#121f35", outline=accent, width=2)
+        canvas.create_text(
+            x + (size / 2),
+            pill_y0 + 16,
+            text=action_label,
+            fill=accent,
+            font=("Consolas", 14, "bold"),
+        )
 
     def refresh(self) -> None:
         snapshot = self.reader.read()
+        display_metrics = dict(snapshot.metrics)
+        live_speed = self._live_train_speed(snapshot)
+        if live_speed is not None:
+            display_metrics["fps"] = live_speed
 
         status_color = {
             "LIVE": GOOD,
@@ -620,21 +845,35 @@ class MetricsDashboardWindow(BaseDashboardWindow):
         }.get(snapshot.status, "#e2e8f0")
 
         self.status_label.configure(text=snapshot.status, fg=status_color)
-        detail = snapshot.detail
-        if snapshot.event_path is not None:
-            detail = f"{detail}\n{snapshot.event_path}"
-        self.detail_label.configure(text=detail)
-        self.hero_timestep.configure(text=_format_compact_int(snapshot.metrics.get("timesteps")))
-        self.hero_reward.configure(text=_format_float(snapshot.metrics.get("ep_rew_mean"), digits=3))
+        self.hero_boxes["score"].configure(text=_format_compact_int(snapshot.hud.get("score")))
+        self.hero_boxes["health"].configure(
+            text=_format_percent(snapshot.hud.get("health_percent"), digits=1)
+            if snapshot.hud.get("health_percent") is not None
+            else "--"
+        )
+        self.hero_boxes["high_score"].configure(
+            text=_format_compact_int(snapshot.metrics.get("high_score"))
+        )
+        self.hero_boxes["games_played"].configure(
+            text=_format_compact_int(snapshot.metrics.get("games_played"))
+        )
+
+        health_value = snapshot.hud.get("health_percent")
+        if self.health_meter_fill is not None:
+            health_ratio = 0.0 if health_value is None else max(0.0, min(1.0, float(health_value)))
+            self.health_meter_fill.place(x=0, y=0, relheight=1.0, relwidth=health_ratio)
 
         for key, label in self.metric_boxes.items():
-            label.configure(text=self._metric_text(key, snapshot.metrics))
+            if key == "time_running":
+                label.configure(
+                    text=_format_duration(snapshot.elapsed_time_s)
+                    if snapshot.elapsed_time_s is not None
+                    else "--"
+                )
+            else:
+                label.configure(text=self._metric_text(key, display_metrics))
 
-        age_text = "--"
-        if snapshot.event_age_s is not None:
-            age_text = _format_duration(snapshot.event_age_s)
-        event_name = snapshot.event_path.name if snapshot.event_path is not None else "none"
-        self.footer_label.configure(text=f"Event age: {age_text}   Source: {event_name}   ESC to close")
+        self._draw_stream_policy_map(snapshot)
 
         self.root.after(self.interval_ms, self.refresh)
 
@@ -707,6 +946,8 @@ class NetworkDashboardWindow(BaseDashboardWindow):
             ("fps", "FPS"),
             ("iterations", "ROLLOUTS"),
             ("ep_rew_mean", "MEAN REWARD"),
+            ("score", "SCORE"),
+            ("health_percent", "HEALTH"),
         ]:
             badge = tk.Frame(
                 self.badge_row,
@@ -772,10 +1013,16 @@ class NetworkDashboardWindow(BaseDashboardWindow):
 
     def _badge_text(self, key: str, snapshot: TrainingSnapshot) -> str:
         metrics = snapshot.metrics
-        if key in {"timesteps", "iterations", "fps"}:
+        if key in {"timesteps", "iterations"}:
             return _format_compact_int(metrics.get(key))
+        if key == "fps":
+            return _format_rate(metrics.get(key))
         if key == "ep_rew_mean":
             return _format_float(metrics.get(key), digits=3)
+        if key == "score":
+            return _format_compact_int(snapshot.hud.get("score"))
+        if key == "health_percent":
+            return _format_percent(snapshot.hud.get("health_percent"), digits=1)
         return "--"
 
     def _draw_architecture(self, snapshot: TrainingSnapshot | None) -> None:
@@ -1056,7 +1303,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Training run directory. Defaults to the newest subdirectory under runs/",
     )
-    parser.add_argument("--interval-s", type=float, default=1.0)
+    parser.add_argument("--interval-s", type=float, default=0.2)
     parser.add_argument("--geometry", type=str, default="480x1080+0+0")
     parser.add_argument("--topmost", action="store_true")
     parser.add_argument(

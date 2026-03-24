@@ -9,16 +9,22 @@ import numpy as np
 from irisu_blackbox.config import HealthBarConfig, Rect, ScoreOCRConfig
 from irisu_blackbox.score_ocr import extract_score_reading
 
+_MIN_HEALTH_SPAN_COLS = 5
+_RELAXED_HEALTH_SATURATION = 25
+_RELAXED_HEALTH_VALUE = 70
+
 
 @dataclass(slots=True)
 class HUDState:
     score: int | None
+    score_visible: bool | None
     health_percent: float | None
     health_visible: bool | None
 
     def as_dict(self) -> dict[str, float | int | bool | None]:
         return {
             "score": self.score,
+            "score_visible": self.score_visible,
             "health_percent": self.health_percent,
             "health_visible": self.health_visible,
         }
@@ -108,17 +114,13 @@ class HUDReader:
             return None, False
 
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-        lower_1 = np.array(self.health_cfg.hsv_lower_1, dtype=np.uint8)
-        upper_1 = np.array(self.health_cfg.hsv_upper_1, dtype=np.uint8)
-        lower_2 = np.array(self.health_cfg.hsv_lower_2, dtype=np.uint8)
-        upper_2 = np.array(self.health_cfg.hsv_upper_2, dtype=np.uint8)
+        direction = self.health_cfg.fill_direction.lower()
+        mask = _build_health_presence_mask(hsv, self.health_cfg)
+        mask = _clean_health_mask(mask)
+        mask_percent = _percent_from_mask(mask, direction, require_edge_anchor=False)
+        presence_ratio = _left_presence_ratio(mask, self.health_cfg)
 
-        mask_1 = cv2.inRange(hsv, lower_1, upper_1)
-        mask_2 = cv2.inRange(hsv, lower_2, upper_2)
-        mask = cv2.bitwise_or(mask_1, mask_2)
-
-        visible_pixels = int(np.count_nonzero(mask))
-        visible = visible_pixels >= self.health_cfg.min_visible_pixels
+        visible = presence_ratio >= self.health_cfg.presence_ratio_threshold
         if not visible:
             return 0.0, False
 
@@ -134,7 +136,12 @@ class HUDReader:
         baseline = float(np.percentile(col_strength, 20))
         peak_strength = float(np.percentile(col_strength, 95))
         if peak_strength <= baseline:
-            return 0.0, True
+            percent = mask_percent
+            assert percent is not None
+            if self.health_cfg.invert_percent:
+                percent = 1.0 - percent
+                percent = max(0.0, min(1.0, percent))
+            return percent, True
 
         adaptive_threshold = baseline + (
             (peak_strength - baseline) * self.health_cfg.adaptive_fill_peak_ratio
@@ -142,9 +149,11 @@ class HUDReader:
         adaptive_threshold = max(self.health_cfg.column_fill_threshold, adaptive_threshold)
         col_mask = (col_strength >= adaptive_threshold).astype(np.uint8)
         if col_mask.size == 0:
-            percent = 0.0
+            percent = mask_percent
+            assert percent is not None
             if self.health_cfg.invert_percent:
                 percent = 1.0 - percent
+                percent = max(0.0, min(1.0, percent))
             return percent, True
 
         # Close tiny holes in the per-column signal.
@@ -157,18 +166,19 @@ class HUDReader:
 
         spans = _find_true_spans(col_mask)
         if not spans:
-            percent = 0.0
+            percent = mask_percent
+            assert percent is not None
             if self.health_cfg.invert_percent:
                 percent = 1.0 - percent
+                percent = max(0.0, min(1.0, percent))
             return percent, True
 
         # Use edge-consistent span based on configured fill direction.
-        if self.health_cfg.fill_direction.lower() == "right_to_left":
+        if direction == "right_to_left":
             start, end = max(spans, key=lambda item: item[1])
         else:
             start, end = min(spans, key=lambda item: item[0])
         width = mask.shape[1]
-        direction = self.health_cfg.fill_direction.lower()
         if direction == "right_to_left":
             percent = float((width - start) / width)
         else:
@@ -204,16 +214,13 @@ class HUDReader:
             return 0.0, False
 
         hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
-        lower_1 = np.array(self.health_cfg.hsv_lower_1, dtype=np.uint8)
-        upper_1 = np.array(self.health_cfg.hsv_upper_1, dtype=np.uint8)
-        lower_2 = np.array(self.health_cfg.hsv_lower_2, dtype=np.uint8)
-        upper_2 = np.array(self.health_cfg.hsv_upper_2, dtype=np.uint8)
-        mask_1 = cv2.inRange(hsv, lower_1, upper_1)
-        mask_2 = cv2.inRange(hsv, lower_2, upper_2)
-        mask = cv2.bitwise_or(mask_1, mask_2)
+        direction = self.health_cfg.fill_direction.lower()
+        mask = _build_health_presence_mask(hsv, self.health_cfg)
+        mask = _clean_health_mask(mask)
+        mask_percent = _percent_from_mask(mask, direction, require_edge_anchor=False)
+        presence_ratio = _left_presence_ratio(mask, self.health_cfg)
 
-        visible_pixels = int(np.count_nonzero(mask))
-        visible = visible_pixels >= self.health_cfg.min_visible_pixels
+        visible = presence_ratio >= self.health_cfg.presence_ratio_threshold
         if not visible:
             return 0.0, False
 
@@ -225,14 +232,18 @@ class HUDReader:
             col_strength = cv2.GaussianBlur(col_strength[None, :], (1, 0), 1.0)[0]
 
         if col_strength.size <= 1:
-            return 0.0, True
+            percent = mask_percent
+            assert percent is not None
+            if self.health_cfg.invert_percent:
+                percent = 1.0 - percent
+                percent = max(0.0, min(1.0, percent))
+            return percent, True
 
         grad = np.diff(col_strength)
         abs_grad = np.abs(grad)
         boundary = int(np.argmax(abs_grad))
         contrast = float(abs_grad[boundary])
 
-        direction = self.health_cfg.fill_direction.lower()
         length = col_strength.size
 
         if contrast < self.health_cfg.scanline_contrast_threshold:
@@ -240,7 +251,12 @@ class HUDReader:
             baseline = float(np.percentile(col_strength, 20))
             peak_strength = float(np.percentile(col_strength, 95))
             if peak_strength <= baseline:
-                return 0.0, True
+                percent = mask_percent
+                assert percent is not None
+                if self.health_cfg.invert_percent:
+                    percent = 1.0 - percent
+                    percent = max(0.0, min(1.0, percent))
+                return percent, True
             threshold = baseline + (
                 (peak_strength - baseline) * self.health_cfg.adaptive_fill_peak_ratio
             )
@@ -248,7 +264,12 @@ class HUDReader:
             col_mask = (col_strength >= threshold).astype(np.uint8)
             spans = _find_true_spans(col_mask)
             if not spans:
-                return 0.0, True
+                percent = mask_percent
+                assert percent is not None
+                if self.health_cfg.invert_percent:
+                    percent = 1.0 - percent
+                    percent = max(0.0, min(1.0, percent))
+                return percent, True
             if direction == "right_to_left":
                 start, _ = max(spans, key=lambda item: item[1])
                 percent = float((length - start) / length)
@@ -274,6 +295,7 @@ class HUDReader:
         health_percent = self._smooth_health_percent(health_percent, health_visible)
         return HUDState(
             score=score,
+            score_visible=(raw_score is not None) if self.score_cfg.enabled else None,
             health_percent=health_percent,
             health_visible=health_visible,
         )
@@ -481,3 +503,86 @@ def _find_true_spans(col_mask: np.ndarray) -> list[tuple[int, int]]:
     starts = np.flatnonzero(diff == 1)
     ends = np.flatnonzero(diff == -1) - 1
     return [(int(s), int(e)) for s, e in zip(starts, ends)]
+
+
+def _clean_health_mask(mask: np.ndarray) -> np.ndarray:
+    width = int(mask.shape[1]) if mask.ndim == 2 else 0
+    kernel_w = min(max(_MIN_HEALTH_SPAN_COLS, 1), max(1, width))
+    kernel = np.ones((1, kernel_w), dtype=np.uint8)
+    return cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+
+def _left_presence_ratio(mask: np.ndarray, cfg: HealthBarConfig) -> float:
+    if mask.size == 0 or mask.ndim != 2:
+        return 0.0
+    width = int(mask.shape[1])
+    if width <= 0:
+        return 0.0
+
+    fraction = max(0.05, min(1.0, float(cfg.visibility_left_fraction)))
+    sample_width = max(1, int(round(width * fraction)))
+    sample = mask[:, :sample_width]
+    return float(np.count_nonzero(sample)) / float(sample.size)
+
+
+def _build_health_presence_mask(hsv: np.ndarray, cfg: HealthBarConfig) -> np.ndarray:
+    strict_lower_1 = np.array(cfg.hsv_lower_1, dtype=np.uint8)
+    strict_upper_1 = np.array(cfg.hsv_upper_1, dtype=np.uint8)
+    strict_lower_2 = np.array(cfg.hsv_lower_2, dtype=np.uint8)
+    strict_upper_2 = np.array(cfg.hsv_upper_2, dtype=np.uint8)
+
+    relaxed_lower_1 = np.array(
+        [
+            cfg.hsv_lower_1[0],
+            min(cfg.hsv_lower_1[1], _RELAXED_HEALTH_SATURATION),
+            max(cfg.hsv_lower_1[2], _RELAXED_HEALTH_VALUE),
+        ],
+        dtype=np.uint8,
+    )
+    relaxed_upper_1 = strict_upper_1
+    relaxed_lower_2 = np.array(
+        [
+            cfg.hsv_lower_2[0],
+            min(cfg.hsv_lower_2[1], _RELAXED_HEALTH_SATURATION),
+            max(cfg.hsv_lower_2[2], _RELAXED_HEALTH_VALUE),
+        ],
+        dtype=np.uint8,
+    )
+    relaxed_upper_2 = strict_upper_2
+
+    strict_mask = cv2.bitwise_or(
+        cv2.inRange(hsv, strict_lower_1, strict_upper_1),
+        cv2.inRange(hsv, strict_lower_2, strict_upper_2),
+    )
+    relaxed_mask = cv2.bitwise_or(
+        cv2.inRange(hsv, relaxed_lower_1, relaxed_upper_1),
+        cv2.inRange(hsv, relaxed_lower_2, relaxed_upper_2),
+    )
+    return cv2.bitwise_or(strict_mask, relaxed_mask)
+
+
+def _percent_from_mask(
+    mask: np.ndarray,
+    direction: str,
+    *,
+    require_edge_anchor: bool = True,
+) -> float | None:
+    if mask.size == 0:
+        return None
+    col_mask = (mask > 0).any(axis=0).astype(np.uint8)
+    spans = _find_true_spans(col_mask)
+    if not spans:
+        return None
+    start, end = max(spans, key=lambda item: item[1] - item[0])
+    span_len = (end - start) + 1
+    if span_len < min(_MIN_HEALTH_SPAN_COLS, col_mask.size):
+        return None
+    width = col_mask.size
+    edge_tolerance = min(2, max(0, width - 1))
+    if direction == "right_to_left":
+        if require_edge_anchor and end < (width - 1 - edge_tolerance):
+            return None
+        return float((width - start) / width)
+    if require_edge_anchor and start > edge_tolerance:
+        return None
+    return float((end + 1) / width)
