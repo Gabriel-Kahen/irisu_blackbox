@@ -84,6 +84,11 @@ class HUDReader:
             and reading.confidence < self.score_cfg.min_confidence
         ):
             return None
+        if reading.score < 0:
+            return None
+        max_valid_score = max(0, int(self.score_cfg.max_valid_score))
+        if max_valid_score > 0 and reading.score > max_valid_score:
+            return None
         return reading.score
 
     def _read_health(self, frame_bgr: np.ndarray) -> tuple[float | None, bool | None]:

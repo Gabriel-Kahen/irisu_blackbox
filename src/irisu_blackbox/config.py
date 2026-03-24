@@ -94,6 +94,7 @@ class ScoreOCRConfig:
     hold_last_value_when_missing: bool = True
     min_confidence: float = 40.0
     max_step_increase: int = 1000
+    max_valid_score: int = 9_999_999
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ScoreOCRConfig":
@@ -137,6 +138,7 @@ class ScoreOCRConfig:
             ),
             min_confidence=float(data.get("min_confidence", defaults.min_confidence)),
             max_step_increase=int(data.get("max_step_increase", defaults.max_step_increase)),
+            max_valid_score=int(data.get("max_valid_score", defaults.max_valid_score)),
         )
 
 
@@ -266,6 +268,7 @@ class EpisodeConfig:
     click_hold_s: float = 0.01
     max_clicks_per_second: float = 3.0
     inter_step_sleep_s: float = 0.0
+    max_same_action_streak: int = 8
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "EpisodeConfig":
@@ -280,6 +283,9 @@ class EpisodeConfig:
                 data.get("max_clicks_per_second", defaults.max_clicks_per_second)
             ),
             inter_step_sleep_s=float(data.get("inter_step_sleep_s", defaults.inter_step_sleep_s)),
+            max_same_action_streak=int(
+                data.get("max_same_action_streak", defaults.max_same_action_streak)
+            ),
         )
 
 

@@ -62,6 +62,8 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         self._last_click_time = 0.0
         self._pending_post_game_over_delay = False
         self._action_pause_until = 0.0
+        self._last_action_key: tuple[int, int, str] | None = None
+        self._same_action_streak = 0
 
     def _normalize_score(self, score: int | None) -> float:
         if score is None or score <= 0:
@@ -116,6 +118,8 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         self._health_missing_streak = 0
         self._last_click_time = 0.0
         self._action_pause_until = 0.0
+        self._last_action_key = None
+        self._same_action_streak = 0
 
         info = {"step": self._step_count, "hud": hud.as_dict()}
         return obs, info
@@ -190,9 +194,28 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         cmd = decode_action(int(action), self.cfg.action_grid)
         repeats = max(1, self.cfg.episode.action_repeat)
         action_suppressed = self._is_action_paused()
+        same_action_suppressed = False
+
+        action_key = None if cmd is None else (int(cmd.x), int(cmd.y), str(cmd.button))
+        if action_key is None:
+            self._last_action_key = None
+            self._same_action_streak = 0
+        elif action_key == self._last_action_key:
+            self._same_action_streak += 1
+        else:
+            self._last_action_key = action_key
+            self._same_action_streak = 1
+
+        max_same_action_streak = max(0, int(self.cfg.episode.max_same_action_streak))
+        if (
+            cmd is not None
+            and max_same_action_streak > 0
+            and self._same_action_streak > max_same_action_streak
+        ):
+            same_action_suppressed = True
 
         for _ in range(repeats):
-            if cmd is not None and not action_suppressed:
+            if cmd is not None and not action_suppressed and not same_action_suppressed:
                 max_cps = self.cfg.episode.max_clicks_per_second
                 if max_cps > 0:
                     min_interval = 1.0 / max_cps
@@ -254,6 +277,8 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
             "health_done": health_done,
             "health_missing_streak": self._health_missing_streak,
             "action_suppressed": action_suppressed,
+            "same_action_suppressed": same_action_suppressed,
+            "same_action_streak": self._same_action_streak,
             "action_pause_remaining_s": max(0.0, self._action_pause_until - time.monotonic()),
             "termination_reason": (
                 "backend"

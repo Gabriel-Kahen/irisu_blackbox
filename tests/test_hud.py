@@ -2,6 +2,7 @@ import numpy as np
 
 from irisu_blackbox.config import HealthBarConfig, Rect, ScoreOCRConfig
 from irisu_blackbox.hud import HUDReader
+from irisu_blackbox.score_ocr import ScoreOCRReading
 
 
 def test_health_percent_estimate_from_red_bar():
@@ -204,6 +205,32 @@ def test_score_low_confidence_is_ignored():
     # Simulate candidate from OCR after confidence gate failed (i.e., read None).
     stable = reader._stabilize_score(None)
     assert stable == 123
+
+
+def test_score_above_max_valid_score_is_ignored(monkeypatch):
+    reader = HUDReader(
+        ScoreOCRConfig(
+            enabled=True,
+            region=Rect(left=0, top=0, width=10, height=10),
+            max_valid_score=999_999,
+            hold_last_value_when_missing=True,
+            score_smoothing_window=1,
+        ),
+        HealthBarConfig(enabled=False),
+    )
+    frame = np.zeros((12, 12, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(
+        "irisu_blackbox.hud.extract_score_reading",
+        lambda **_kwargs: ScoreOCRReading(
+            score=21_000_000,
+            confidence=0.95,
+            digit_len=8,
+            source="template",
+        ),
+    )
+
+    assert reader._read_score(frame) is None
 
 
 def test_score_large_jump_confirms_on_second_frame():

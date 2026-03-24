@@ -356,3 +356,43 @@ def test_env_reset_clears_action_pause():
         assert info["action_suppressed"] is False
     finally:
         env.close()
+
+
+def test_env_suppresses_same_click_after_configured_streak():
+    cfg = EnvConfig(
+        backend="mock",
+        obs_width=64,
+        obs_height=64,
+        frame_stack=2,
+        action_grid=ActionGridConfig(rows=4, cols=4, left=0, top=0, right=64, bottom=64),
+        episode=EpisodeConfig(
+            max_steps=10,
+            action_repeat=1,
+            max_clicks_per_second=0.0,
+            max_same_action_streak=2,
+        ),
+    )
+
+    backend = HealthPauseBackend(
+        [
+            _health_visible_frame(),
+            _health_visible_frame(),
+            _health_visible_frame(),
+            _health_visible_frame(),
+        ]
+    )
+    env = IrisuBlackBoxEnv(cfg=cfg, backend=backend)
+    try:
+        env.reset()
+
+        _, _, _, _, info_1 = env.step(1)
+        _, _, _, _, info_2 = env.step(1)
+        _, _, _, _, info_3 = env.step(1)
+
+        assert backend.click_count == 2
+        assert info_1["same_action_suppressed"] is False
+        assert info_2["same_action_suppressed"] is False
+        assert info_3["same_action_suppressed"] is True
+        assert info_3["same_action_streak"] == 3
+    finally:
+        env.close()

@@ -67,6 +67,7 @@ action_repeat = 1
 click_hold_s = 0.01
 max_clicks_per_second = 3.0
 inter_step_sleep_s = 0.0
+max_same_action_streak = 8
 
 [[env.game_over_macro]]
 kind = "click"
@@ -105,6 +106,7 @@ outlier_confirm_frames = 2
 hold_last_value_when_missing = true
 min_confidence = 40.0
 max_step_increase = 1000
+max_valid_score = 9999999
 
 [env.score_ocr.region]
 left = 204
