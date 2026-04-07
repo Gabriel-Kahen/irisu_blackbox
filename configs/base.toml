@@ -57,6 +57,7 @@ score_value_scale = 0.02
 score_value_log_max = 50000.0
 health_value_scale = 0.03
 health_delta_scale = 0.5
+click_penalty = 0.005
 
 [env.hud_features]
 enabled = true
@@ -164,3 +165,4 @@ max_grad_norm = 0.5
 checkpoint_every = 100000
 seed = 1
 device = "auto"
+noop_action_bias = 1.5

@@ -195,6 +195,7 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
         repeats = max(1, self.cfg.episode.action_repeat)
         action_suppressed = self._is_action_paused()
         same_action_suppressed = False
+        executed_clicks = 0
 
         action_key = None if cmd is None else (int(cmd.x), int(cmd.y), str(cmd.button))
         if action_key is None:
@@ -230,6 +231,7 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
                     hold_s=self.cfg.episode.click_hold_s,
                 )
                 self._last_click_time = time.monotonic()
+                executed_clicks += 1
             if self.cfg.episode.inter_step_sleep_s > 0:
                 time.sleep(self.cfg.episode.inter_step_sleep_s)
 
@@ -246,6 +248,7 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
             observed_score=hud.score,
             observed_health_percent=hud.health_percent,
             health_visible=hud.health_visible,
+            executed_clicks=executed_clicks,
         )
         self._step_count += 1
 
@@ -280,6 +283,7 @@ class IrisuBlackBoxEnv(gym.Env[ObsType, int]):
             "same_action_suppressed": same_action_suppressed,
             "same_action_streak": self._same_action_streak,
             "action_pause_remaining_s": max(0.0, self._action_pause_until - time.monotonic()),
+            "executed_clicks": executed_clicks,
             "termination_reason": (
                 "backend"
                 if backend_done

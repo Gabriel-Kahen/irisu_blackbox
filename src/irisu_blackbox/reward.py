@@ -18,6 +18,7 @@ class RewardTerms:
     score_value: float = 0.0
     health_value: float = 0.0
     health_delta: float = 0.0
+    click_penalty: float = 0.0
 
     @property
     def total(self) -> float:
@@ -30,6 +31,7 @@ class RewardTerms:
             + self.score_value
             + self.health_value
             + self.health_delta
+            + self.click_penalty
         )
 
     def as_dict(self) -> dict[str, float]:
@@ -42,6 +44,7 @@ class RewardTerms:
             "score_value": self.score_value,
             "health_value": self.health_value,
             "health_delta": self.health_delta,
+            "click_penalty": self.click_penalty,
             "total": self.total,
         }
 
@@ -111,6 +114,7 @@ class RewardShaper:
         observed_score_visible: bool | None = None,
         observed_health_percent: float | None = None,
         health_visible: bool | None = None,
+        executed_clicks: int = 0,
     ) -> tuple[float, dict[str, float]]:
         if self._prev_processed is None:
             self.reset(
@@ -139,6 +143,9 @@ class RewardShaper:
 
         if self._stale_steps >= self.cfg.stale_patience:
             terms.stale = self.cfg.stale_penalty
+
+        if executed_clicks > 0 and self.cfg.click_penalty > 0.0:
+            terms.click_penalty = -float(executed_clicks) * self.cfg.click_penalty
 
         current_score = self._resolve_score(
             raw_frame_bgr,

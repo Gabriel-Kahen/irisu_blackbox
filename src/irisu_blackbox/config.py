@@ -245,6 +245,7 @@ class RewardConfig:
     score_value_log_max: float = 50000.0
     health_value_scale: float = 0.03
     health_delta_scale: float = 0.5
+    click_penalty: float = 0.005
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "RewardConfig":
@@ -266,6 +267,7 @@ class RewardConfig:
             ),
             health_value_scale=float(data.get("health_value_scale", defaults.health_value_scale)),
             health_delta_scale=float(data.get("health_delta_scale", defaults.health_delta_scale)),
+            click_penalty=float(data.get("click_penalty", defaults.click_penalty)),
         )
 
 
@@ -493,6 +495,7 @@ class TrainConfig:
     checkpoint_every: int = 100_000
     seed: int = 1
     device: str = "auto"
+    noop_action_bias: float = 1.5
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "TrainConfig":
@@ -514,6 +517,7 @@ class TrainConfig:
             checkpoint_every=int(data.get("checkpoint_every", defaults.checkpoint_every)),
             seed=int(data.get("seed", defaults.seed)),
             device=str(data.get("device", defaults.device)),
+            noop_action_bias=float(data.get("noop_action_bias", defaults.noop_action_bias)),
         )
 
 

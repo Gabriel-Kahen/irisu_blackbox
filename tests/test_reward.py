@@ -111,3 +111,21 @@ def test_reward_ignores_held_score_when_visibility_is_false():
     assert terms["score_delta"] == 0.0
     assert terms["score_value"] == 0.0
     assert reward == terms["total"]
+
+
+def test_reward_applies_click_penalty_for_executed_clicks():
+    cfg = RewardConfig(
+        survival_reward=0.0,
+        activity_reward_scale=0.0,
+        click_penalty=0.01,
+    )
+    shaper = RewardShaper(cfg)
+
+    frame = np.zeros((8, 8), dtype=np.float32)
+    raw = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    shaper.reset(frame, raw)
+    reward, terms = shaper.step(frame, raw, executed_clicks=2)
+
+    assert terms["click_penalty"] == -0.02
+    assert reward == terms["total"]

@@ -14,6 +14,11 @@ from irisu_blackbox.checkpoints import find_latest_resume_path
 from irisu_blackbox.config import RootConfig, load_config
 from irisu_blackbox.factory import make_env_factory
 from irisu_blackbox.live_metrics import DashboardMetricsRecorder
+from irisu_blackbox.policies import (
+    NoopBiasedCnnLstmPolicy,
+    NoopBiasedMultiInputLstmPolicy,
+    install_noop_bias,
+)
 
 
 def _parse_window_titles(raw: str | None) -> list[str] | None:
@@ -58,9 +63,9 @@ def _make_model(cfg: RootConfig, vec_env: VecMonitor, run_dir: Path) -> Recurren
     rollout_size = cfg.train.n_steps * cfg.train.n_envs
     batch_size = _resolve_batch_size(cfg.train.batch_size, rollout_size)
     policy = (
-        "MultiInputLstmPolicy"
+        NoopBiasedMultiInputLstmPolicy
         if isinstance(vec_env.observation_space, spaces.Dict)
-        else "CnnLstmPolicy"
+        else NoopBiasedCnnLstmPolicy
     )
 
     return RecurrentPPO(
@@ -79,6 +84,7 @@ def _make_model(cfg: RootConfig, vec_env: VecMonitor, run_dir: Path) -> Recurren
         verbose=1,
         seed=cfg.train.seed,
         device=cfg.train.device,
+        policy_kwargs={"noop_action_bias": cfg.train.noop_action_bias},
     )
 
 def _load_or_make_model(
@@ -88,11 +94,14 @@ def _load_or_make_model(
     resume_from: Path | None = None,
 ) -> tuple[RecurrentPPO, bool]:
     if resume_from is None:
-        return _make_model(cfg, vec_env, run_dir=run_dir), False
+        model = _make_model(cfg, vec_env, run_dir=run_dir)
+        install_noop_bias(model.policy, cfg.train.noop_action_bias)
+        return model, False
 
     model = RecurrentPPO.load(str(resume_from), env=vec_env, device=cfg.train.device)
     model.tensorboard_log = str(run_dir / "tensorboard")
     model.verbose = 1
+    install_noop_bias(model.policy, cfg.train.noop_action_bias)
     return model, True
 
 
